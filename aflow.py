@@ -1,14 +1,17 @@
 from sqlmodel import Field, Relationship, SQLModel, create_engine, Session as S, select
 from sqlalchemy import Column, func
 from sqlalchemy.types import JSON
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Type
 from pydantic import BaseModel
 import asyncio
+from PIL import Image
+from io import BytesIO
 
 from data import get_task_by_id, get_all_task_ids
 from aflow_prompt import WORKFLOW_OPTIMIZE_PROMPT, WORKFLOW_OPTIMIZE_GUIDANCE, format_log, format_experience
 from anode import custom
-
+import pydantic._internal._model_construction
+import base64
 before = r"""
 from anode import custom
 class ModelWrapper:
@@ -109,8 +112,8 @@ class Graph(SQLModel, table=True):
         ret = Run(
             graph_id=self.id,
             task_id=task['id'],
-            log=custom.log,
             output=ret,
+            log = custom.log,
             score=score,
         )
         with S(es) as session:
@@ -126,18 +129,57 @@ def IoU_xyxy(a, b):
     intersection = max((min(a[2], b[2]) - max(a[0], b[0])), 0) * max((min(a[3], b[3]) - max(a[1], b[1])), 0)
     return intersection / (A_xyxy(a) + A_xyxy(b) - intersection)
 
-
 class Run(SQLModel, table=True):
     graph_id: int = Field(primary_key=True, foreign_key="graph.id")
     task_id: str = Field(primary_key=True)
-    log: List[Dict[str, Any]] = Field(sa_column=Column(JSON))
+    loglog: List[Dict[str, Any]] = Field(sa_column=Column(JSON))
     output: List[float] = Field(sa_column=Column(JSON))  # Changed from tuple to List
     score: float
     graph: Graph = Relationship(back_populates="runs")
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.log = kwargs['log']
+
     @property
     def task(self):
         return get_task_by_id(self.task_id)
+    
+    @property
+    def log(self):
+        def bytes_to_image(obj):
+            if isinstance(obj, str):
+                if obj.startswith('abragadoabragado'):
+                    return Image.open(BytesIO(base64.b64decode(obj[len('abragadoabragado'):])))
+                return obj
+            elif isinstance(obj, list):
+                return [bytes_to_image(x) for x in obj]
+            elif isinstance(obj, tuple):
+                return tuple(bytes_to_image(x) for x in obj)
+            elif isinstance(obj, dict):
+                return {k: bytes_to_image(v) for k, v in obj.items()}
+            else:
+                raise TypeError(type(obj))
+        return bytes_to_image(self.loglog)
+    @log.setter
+    def log(self, value):
+        def image_to_bytes(obj):
+            if isinstance(obj, Image.Image):
+                buffered = BytesIO()
+                obj.save(buffered, format="PNG")
+                return f'abragadoabragado{base64.b64encode(buffered.getvalue()).decode()}'
+            elif isinstance(obj, str):
+                return obj
+            elif isinstance(obj, list):
+                return [image_to_bytes(x) for x in obj]
+            elif isinstance(obj, tuple):
+                return tuple(image_to_bytes(x) for x in obj)
+            elif isinstance(obj, dict):
+                return {k: image_to_bytes(v) for k, v in obj.items()}
+            else:
+                assert issubclass(type(obj), BaseModel) or isinstance(obj, pydantic._internal._model_construction.ModelMetaclass)
+                return type(obj).__name__
+        self.loglog = image_to_bytes(value)
     
 
 es = create_engine(f"sqlite:///{db_name}")
@@ -216,8 +258,6 @@ async def main():
         graph = get_strongest_graph()
 
         run = await graph.run(get_high_variance_task())
-        print(run)
-
         ret = custom(
             WORKFLOW_OPTIMIZE_PROMPT.format(
                 agent=graph.graph,

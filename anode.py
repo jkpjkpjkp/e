@@ -10,6 +10,7 @@ from PIL import Image
 from pydantic import BeforeValidator
 from typing_extensions import Annotated
 from loguru import logger
+from typing import get_args
 
 
 def to_base64(image: Image.Image):
@@ -26,6 +27,7 @@ class LLM:
         )
 
     def aask(self, prompt, system_msgs=''):
+        return "<thought>\nI can see a blue van/camper van in the image parked in what appears to be a parking lot. There's no traditional car in the image, but the van would be considered a type of vehicle/car. I'll provide the bounding box coordinates for this blue van, which is located in the lower left portion of the image.\n</thought>\n\n<bbox>[0.12, 0.82, 0.32, 0.95]</bbox>"
 
         # print(prompt)
         # raise
@@ -124,6 +126,24 @@ class ActionNode:
                     raw_value = match.group(1).strip()
                     extracted_data[field_name] = raw_value
         return extracted_data
+    
+    def before_validator(self, result):
+        types = self.pydantic_model.model_fields
+        for k, v in result.items():
+            field_info = types[k]
+            if hasattr(field_info.annotation, "__origin__") and field_info.annotation.__origin__ is tuple:
+                inner_type = get_args(field_info.annotation)[0]
+                if isinstance(v, str):
+                    if v.startswith('['):
+                        v = v[1:-1]
+                    elif v.startswith('('):
+                        v = v[1:-1]
+                    v = v.replace(',', ' ').strip().split()
+                    v = (x for x in v if x)
+                result[k] = tuple(inner_type(x) for x in v)
+            else:
+                assert(types[k].annotation == type(v))
+        return result
 
     def fill(
         self,
@@ -135,34 +155,13 @@ class ActionNode:
         self.context = context
         context = self.xml_compile(context=self.context)
         result = self.xml_fill(context)
-        self.instruct_content = self.pydantic_model(**result)
-        return self
+        result = self.before_validator(result)
+        return self.pydantic_model(**result)
 
 
 
 class GenerateOp(BaseModel):
     response: str = Field(default="", description="Your solution for this problem")
-
-def parse_bbox_string(v: str) -> Tuple[int, int, int, int]:
-    if v.startswith('['):
-        v = v[1:-1]
-    elif v.startswith('('):
-        v = v[1:-1]
-    v = v.replace(',', ' ')
-    try:
-        numbers = v.split()
-        if len(numbers) != 4:
-            raise ValueError("Expected four numbers in bbox string")
-        return tuple(int(num) for num in numbers)
-    except (ValueError, TypeError):
-        raise ValueError("Invalid bbox format; expected 'num num num num'")
-
-BBoxType = Annotated[Tuple[int, int, int, int], BeforeValidator(parse_bbox_string)]
-
-class CropOp(BaseModel):
-    thought: str = Field(default="", description="Thoughts on what crop may be sufficient.")
-    bbox: BBoxType = Field(..., description="a crop containing all relevant information, in x y x y format, idx from 0 to 1000. ")
-
 
 def custom(*args, dna=GenerateOp):
     if len(args) == 1 and isinstance(args[0], (tuple, list)):

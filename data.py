@@ -10,5 +10,6 @@ def get_task_by_id(id):
     ret = df[id].to_dict()
     ret['image'] = Image.open(ret['image_path'][0])
     ret['label'] = ret['label'][0]
+    ret['answer'] = ret['annotation'][0]
     ret['id'] = id
     return ret
