@@ -27,7 +27,7 @@ class LLM:
         )
 
     def aask(self, prompt, system_msgs=''):
-        return "<thought>\nI can see a blue van/camper van in the image parked in what appears to be a parking lot. There's no traditional car in the image, but the van would be considered a type of vehicle/car. I'll provide the bounding box coordinates for this blue van, which is located in the lower left portion of the image.\n</thought>\n\n<bbox>[0.12, 0.82, 0.32, 0.95]</bbox>"
+        # return "<thought>\nI can see a blue van/camper van in the image parked in what appears to be a parking lot. There's no traditional car in the image, but the van would be considered a type of vehicle/car. I'll provide the bounding box coordinates for this blue van, which is located in the lower left portion of the image.\n</thought>\n\n<bbox>[0.12, 0.82, 0.32, 0.95]</bbox>"
 
         # print(prompt)
         # raise
@@ -43,7 +43,7 @@ class LLM:
                 if isinstance(stuff, str):
                     content.append({"type": "text", "text": stuff})
                 else:
-                    assert isinstance(stuff, Image.Image)
+                    assert isinstance(stuff, Image.Image), prompt
                     content.append({"type": "image_url", "image_url": {"url": to_base64(stuff)}})
             messages.append({"role": "user", "content": content})
         
@@ -164,6 +164,8 @@ class GenerateOp(BaseModel):
     response: str = Field(default="", description="Your solution for this problem")
 
 def custom(*args, dna=GenerateOp):
+    for x in args:
+        assert x
     if len(args) == 1 and isinstance(args[0], (tuple, list)):
         args = args[0]
     return ActionNode(dna).fill(context=args, llm=LLM())

@@ -84,8 +84,8 @@ class Graph(SQLModel, table=True):
 
         exec(before, namespace)
         custom = namespace.get('custom')
-        image, label = task['image'], task['label']
-
+        assert task['image']
+        assert task['label']
         try:
             self.graph = self.graph.replace('from anode import custom', '')
             exec(self.graph, namespace)
