@@ -4,7 +4,7 @@ from PIL import Image
 
 class BboxOp(BaseModel):
     thought: str = Field('')
-    bbox: tuple[float] = Field('x y x y bbox normalized [0,1]')
+    bbox: tuple[float] = Field(..., description='x y x y bbox normalized to [0,1]')
 
 def run(image: Image.Image, label: str) -> tuple[float]:
     ret = custom(f'please output the bounding box of "{label}" in the image.', image, dna=BboxOp)['bbox']

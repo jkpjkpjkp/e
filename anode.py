@@ -1,7 +1,7 @@
 import re
 import typing
 from typing import Any, Dict, Tuple, Type
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, Field
 from openai import OpenAI
 import base64
 from io import BytesIO
@@ -27,8 +27,8 @@ class LLM:
 
     def aask(self, prompt, system_msgs=''):
 
-        print(prompt)
-        raise
+        # print(prompt)
+        # raise
         messages = [
             {"role": "system", "content": system_msgs or "You are a helpful assistant."},
         ]
@@ -52,69 +52,17 @@ class LLM:
         ).choices[0].message.content
 
 class ActionNode:
-    def __init__(
-        self,
-        key: str,
-        expected_type: Type,
-        instruction: str,
-        example: Any,
-        content: str = "",
-        children: dict[str, "ActionNode"] = None,
-        schema: str = "",
-    ):
-        self.key = key
-        self.expected_type = expected_type
-        self.instruction = instruction
-        self.example = example
-        self.content = content
-        self.children = children if children is not None else {}
-        self.schema = schema
-
-    def add_child(self, node: "ActionNode"):
-        self.children[node.key] = node
-
-    def get_mapping(self, mode="children", exclude=None) -> Dict[str, Tuple[Type, Any]]:
-        exclude = exclude or []
-        if mode == "children" or (mode == "auto" and self.children):
-            mapping = {}
-            for key, child in self.children.items():
-                if key in exclude:
-                    continue
-                mapping[key] = (child.expected_type, Field(default=child.example, description=child.instruction))
-            return mapping
-        return {} if exclude and self.key in exclude else {self.key: (self.expected_type, ...)}
-
-    @classmethod
-    def create_model_class(cls, class_name: str, mapping: Dict[str, Tuple[Type, Any]]):
-        new_fields = {}
-        for field_name, (field_type, field_info) in mapping.items():
-            new_fields[field_name] = (field_type, field_info)
-        return create_model(class_name, **new_fields)
-
-    def create_class(self, mode="auto", class_name: str = None, exclude=None):
-        class_name = class_name if class_name else f"{self.key}_AN"
-        mapping = self.get_mapping(mode=mode, exclude=exclude)
-        return self.create_model_class(class_name, mapping)
-
-    def get_field_names(self):
-        model_class = self.create_class()
-        return model_class.model_fields.keys()
-
-    def get_field_types(self):
-        model_class = self.create_class()
-        return {field_name: field.annotation for field_name, field in model_class.model_fields.items()}
+    def __init__(self, pydantic_model: Type[BaseModel]):
+        self.pydantic_model = pydantic_model
 
     def xml_compile(self, context):
         """
         Compile the prompt to make it easier for the model to understand the xml format.
         """
-        field_names = self.get_field_names()
-        field_types = self.get_field_types()
         # Construct the example using the field names and their types
         examples = []
-        for field_name in field_names:
-            field_type = field_types.get(field_name)
-            examples.append(f"<{field_name}> # type: {field_type}</{field_name}>")
+        for field_name, field_info in self.pydantic_model.model_fields.items():
+            examples.append(f"<{field_name}> # type: {field_info.annotation.__name__}{', ' + field_info.description if field_info.description else ''}{', default=' + str(field_info.default) if str(field_info.default) and str(field_info.default) != 'PydanticUndefined' else ''}</{field_name}>")
 
         # Join all examples into a single string
         example_str = "\n".join(examples)
@@ -130,16 +78,14 @@ class ActionNode:
         return context
 
     def xml_fill(self, context: str | tuple) -> Dict[str, Any]:
-        field_names = self.get_field_names()
-        field_types = self.get_field_types()
         extracted_data: Dict[str, Any] = {}
         content = self.llm.aask(context)
-        for field_name in field_names:
+        for field_name, field_info in self.pydantic_model.model_fields.items():
             pattern = rf"<{field_name}>((?:(?!<{field_name}>).)*?)</{field_name}>"
             match = re.search(pattern, content, re.DOTALL)
             if match:
                 raw_value = match.group(1).strip()
-                field_type = field_types.get(field_name)
+                field_type = field_info.annotation
                 if field_type is str:
                     pattern = r"```python(.*?)```"
                     match = re.search(pattern, raw_value, re.DOTALL)
@@ -189,24 +135,8 @@ class ActionNode:
         self.context = context
         context = self.xml_compile(context=self.context)
         result = self.xml_fill(context)
-        self.instruct_content = self.dantic(**result)
+        self.instruct_content = self.pydantic_model(**result)
         return self
-
-    @classmethod
-    def from_pydantic(cls, model: Type[BaseModel], key: str = None):
-        key = key or model.__name__
-        root_node = cls(key=key, expected_type=Type[model], instruction="", example="")
-        for field_name, field_info in model.model_fields.items():
-            field_type = field_info.annotation
-            description = field_info.description or ""
-            default = field_info.default
-            if not isinstance(field_type, typing._GenericAlias) and issubclass(field_type, BaseModel):
-                child_node = cls.from_pydantic(field_type, key=field_name)
-            else:
-                child_node = cls(key=field_name, expected_type=field_type, instruction=description, example=default)
-            root_node.add_child(child_node)
-        root_node.dantic = model
-        return root_node
 
 
 
@@ -237,7 +167,7 @@ class CropOp(BaseModel):
 def custom(*args, dna=GenerateOp):
     if len(args) == 1 and isinstance(args[0], (tuple, list)):
         args = args[0]
-    return ActionNode.from_pydantic(dna).fill(context=args, llm=LLM())
+    return ActionNode(dna).fill(context=args, llm=LLM())
 
 def test_custom():
     print(custom('hi! '))
