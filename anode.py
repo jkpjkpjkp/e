@@ -27,12 +27,8 @@ class LLM:
         )
 
     def aask(self, prompt, system_msgs=''):
-        # return "<thought>\nI can see a blue van/camper van in the image parked in what appears to be a parking lot. There's no traditional car in the image, but the van would be considered a type of vehicle/car. I'll provide the bounding box coordinates for this blue van, which is located in the lower left portion of the image.\n</thought>\n\n<bbox>[0.12, 0.82, 0.32, 0.95]</bbox>"
-
-        # print(prompt)
-        # raise
         messages = [
-            {"role": "system", "content": system_msgs or "You are a helpful assistant."},
+            {"role": "system", "content": system_msgs or "You are a helpful assistant. "},
         ]
         if isinstance(prompt, str):
             messages.append({"role": "user", "content": [{"type": "text", "text": prompt}]})
@@ -157,7 +153,6 @@ class ActionNode:
         result = self.xml_fill(context)
         result = self.before_validator(result)
         return self.pydantic_model(**result)
-
 
 
 class GenerateOp(BaseModel):

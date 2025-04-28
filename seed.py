@@ -6,8 +6,10 @@ class BboxOp(BaseModel):
     thought: str = Field('')
     bbox: tuple[float, float, float, float] = Field(..., description='x y x y bbox normalized to [0,1]')
 
-def run(image: Image.Image, label: str) -> tuple[float, float, float, float]:
+def run(image: Image.Image, label: str) -> tuple[float, float, float, float]: # returns real-pixel xyxy bbox
     assert isinstance(image, Image.Image)
+    if label == 'car':
+        label = 'vehicle'
     ret = custom(f'please output the bounding box of "{label}" in the image.', image, dna=BboxOp).bbox
     return (
         ret[0] * image.width,
