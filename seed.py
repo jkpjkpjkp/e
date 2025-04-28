@@ -1,19 +1,12 @@
-from anode import custom
-from pydantic import BaseModel, Field
+from lmm import lmm  # a convenient wrapper around lmm api call, takes in as args str or Image.Image
 from PIL import Image
 
-class BboxOp(BaseModel):
-    thought: str = Field('')
-    bbox: tuple[float, float, float, float] = Field(..., description='x y x y bbox normalized to [0,1]')
+PROMPT = """to answer 'How many {label} is visible in the image', a first step can be to split the image in 2 and examine each. output the coordinates of a x y x y bounding box between <bbox> and </bbox>, that is one half of the image we should split into. be careful not to cut through any object of interest"""
 
-def run(image: Image.Image, label: str) -> tuple[float, float, float, float]: # returns real-pixel xyxy bbox
-    assert isinstance(image, Image.Image)
-    if label == 'car':
-        label = 'vehicle'
-    ret = custom(f'please output the bounding box of "{label}" in the image.', image, dna=BboxOp).bbox
-    return (
-        ret[0] * image.width,
-        ret[1] * image.height,
-        ret[2] * image.width,
-        ret[3] * image.height,
-    )
+def run(image: Image.Image, label: str) -> tuple[float, float, float, float]:
+    ret = lmm(image, PROMPT.format(label=label))
+    bbox_str = ret.response.split('<bbox>')[1].split('</bbox>')[0]
+    if bbox_str.startswith(('(', '[')):
+        bbox_str = bbox_str[1:-1]
+    bbox = tuple(float(x) for x in bbox_str.replace(',', ' ').split())
+    return bbox

@@ -9,7 +9,7 @@ from io import BytesIO
 
 from data import get_task_by_id, get_all_task_ids
 from aflow_prompt import WORKFLOW_OPTIMIZE_PROMPT, WORKFLOW_OPTIMIZE_GUIDANCE, format_log, format_experience
-from anode import custom
+from lmm import custom
 import pydantic._internal._model_construction
 import base64
 before = r"""
@@ -33,7 +33,7 @@ custom = ModelWrapper(custom)
 after = """
 """
 
-db_name = "one.sqlite"
+db_name = "deux.sqlite"
 
 
 class Graph(SQLModel, table=True):
@@ -240,11 +240,6 @@ def get_high_variance_task(k=1):
         )
     ret = [get_task_by_id(id) for id in ret]
     return ret[0] if k == 1 else ret
-
-class GraphOp(BaseModel):
-    plan: str = Field(description="Thoughts, analysis, of plan on how to improve the agent")
-    modification: str = Field(description="The modification made to the agent")
-    agent: str = Field(description="The agent code and prompts (`run` function)")
 
 async def main():
     graph = get_graph_from_a_file('seed.py')
