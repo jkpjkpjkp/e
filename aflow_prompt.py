@@ -32,9 +32,9 @@ def format_log(log):
         ret.append(x['response'])
     return ret
 
-WORKFLOW_OPTIMIZE_PROMPT = """I am building a bounding box agent. 
-Referring to the given agent code, function `run` takes in an image and a text label and outputs a bbox of the label in image.
-please reconstruct and optimize the function. You can add, modify, or delete functions, parameters, or prompts. Include your 
+WORKFLOW_OPTIMIZE_PROMPT = """We are designing an agent that can count objects in an image.  
+We need to implement function `run`, that takes in an image and a text label and outputs the number of object {{label}} in image.
+Please reconstruct and optimize the function. You can add, modify, or delete functions, parameters, or prompts. Include your 
 Ensure the code you provide is complete and correct, except for `custom` method, which is a convenient wrapper around a lmm call, taking in its args interleaved str and Image.Image and a pydantic model (`dna`) for output. When 
 optimizing, you can incorporate critical thinking methods like review, revise, ensemble (generating multiple answers through different/similar prompts, then voting/integrating/checking the majority to obtain a final answer), selfAsk, etc. Consider 
 Python's loops (for, while, list comprehensions), conditional statements (if-elif-else, ternary operators), 

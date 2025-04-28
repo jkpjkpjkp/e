@@ -9,7 +9,7 @@ from io import BytesIO
 
 from data import get_task_by_id, get_all_task_ids
 from aflow_prompt import WORKFLOW_OPTIMIZE_PROMPT, WORKFLOW_OPTIMIZE_GUIDANCE, format_log, format_experience
-from lmm import custom
+from anode import custom
 import pydantic._internal._model_construction
 import base64
 before = r"""
@@ -93,7 +93,6 @@ class Graph(SQLModel, table=True):
             run = namespace.get('run')
             ret = run(task['image'], task['label'])
         except Exception as e:
-            raise
             print(f'ERROR Graph.run: {e}')
             ret = Run(
                 graph_id=self.id,
@@ -105,9 +104,11 @@ class Graph(SQLModel, table=True):
             with S(es) as session:
                 session.add(ret)
                 session.commit()
-            return ret
+            
+            raise
         
-        score = IoU_xyxy(ret, task['answer'])
+        score = 1 - 4.2 * abs(ret - task['answer']) / task['answer']
+        score = max(0, score)
         
         ret = Run(
             graph_id=self.id,
@@ -121,13 +122,6 @@ class Graph(SQLModel, table=True):
             session.commit()
         
         return ret
-
-def A_xyxy(x):
-    return (x[2] - x[0]) * (x[3] - x[1])
-
-def IoU_xyxy(a, b):
-    intersection = max((min(a[2], b[2]) - max(a[0], b[0])), 0) * max((min(a[3], b[3]) - max(a[1], b[1])), 0)
-    return intersection / (A_xyxy(a) + A_xyxy(b) - intersection)
 
 class Run(SQLModel, table=True):
     graph_id: int = Field(primary_key=True, foreign_key="graph.id")
@@ -240,6 +234,12 @@ def get_high_variance_task(k=1):
         )
     ret = [get_task_by_id(id) for id in ret]
     return ret[0] if k == 1 else ret
+
+
+class GraphOp(BaseModel):
+    plan: str = Field(description="Thoughts, analysis, of plan on how to improve the agent")
+    modification: str = Field(description="Briefly describe the modification made to the agent")
+    agent: str = Field(description="The agent code and prompts (`run` function)")
 
 async def main():
     graph = get_graph_from_a_file('seed.py')
