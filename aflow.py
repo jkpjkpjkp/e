@@ -1,39 +1,18 @@
 from sqlmodel import Field, Relationship, SQLModel, create_engine, Session as S, select
 from sqlalchemy import Column, func
 from sqlalchemy.types import JSON
-from typing import Dict, Any, Optional, List, Type
+from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
 import asyncio
 from PIL import Image
 from io import BytesIO
 
-from data import get_task_by_id, get_all_task_ids
 from aflow_prompt import WORKFLOW_OPTIMIZE_PROMPT, WORKFLOW_OPTIMIZE_GUIDANCE, format_log, format_experience
 from anode import custom
 import pydantic._internal._model_construction
 import base64
-before = r"""
-from anode import custom
-class ModelWrapper:
-    def __init__(self, wrapped):
-        self.wrapped = wrapped
-        self.log = []
-
-    def __call__(self, *args, **kwargs):
-        ret = self.wrapped(*args, **kwargs)
-        self.log.append({
-            'message': {'args': args, 'kwargs': kwargs},
-            'response': ret,
-        })
-        return ret
-
-custom = ModelWrapper(custom)
-"""
-
-after = """
-"""
-
-db_name = "deux.sqlite"
+import wandb
+import argparse
 
 
 class Graph(SQLModel, table=True):
@@ -77,57 +56,70 @@ class Graph(SQLModel, table=True):
             if ret:
                 return ret
 
-        namespace = {
-            '__name__': '__exec__',
-            '__package__': None,
-        }
+        with wandb.init() as wandb_run:
+            namespace = {
+                '__name__': '__exec__',
+                '__package__': None,
+            }
 
-        exec(before, namespace)
-        custom = namespace.get('custom')
-        assert task['image']
-        assert task['label']
-        try:
-            self.graph = self.graph.replace('from anode import custom', '')
-            exec(self.graph, namespace)
-            exec(after, namespace)
-            run = namespace.get('run')
-            ret = run(task['image'], task['label'])
-        except Exception as e:
-            print(f'ERROR Graph.run: {e}')
+            assert task['image']
+            assert task['question']
+            try:
+                exec(self.graph, namespace)
+                run = namespace.get('run')
+                ret = run(task['image'], task['question'])
+            except Exception as e:
+                print(f'ERROR Graph.run: {e}')
+                ret = Run(
+                    graph_id=self.id,
+                    task_id=task['id'],
+                    log={
+                        'input': (task['image'], task['question']),
+                        'output': f'ERROR Graph.run: {e}',
+                        'correct answer': task['answer'],
+                        'wandb': {
+                            'run_id': wandb_run.id,
+                            'url': wandb_run.url
+                        }
+                    },
+                    output=f'ERROR Graph.run: {e}',
+                    score=0,
+                )
+                with S(es) as session:
+                    session.add(ret)
+                    session.commit()
+                
+                raise
+            
+            score = loss(output=ret, answer=task['answer'])
+            
             ret = Run(
                 graph_id=self.id,
                 task_id=task['id'],
-                log=custom.log,
-                output=f'ERROR Graph.run: {e}',
-                score=0,
+                output=ret,
+                log={
+                    'input': (task['image'], task['question']),
+                    'output': ret,
+                    'correct answer': task['answer'],
+                    'wandb': {
+                        'run_id': wandb_run.id,
+                        'url': wandb_run.url
+                    }
+                },
+                score=score,
             )
             with S(es) as session:
+                session.expire_on_commit = False
                 session.add(ret)
                 session.commit()
             
-            raise
-        
-        score = 1 - 4.2 * abs(ret - task['answer']) / task['answer']
-        score = max(0, score)
-        
-        ret = Run(
-            graph_id=self.id,
-            task_id=task['id'],
-            output=ret,
-            log = custom.log,
-            score=score,
-        )
-        with S(es) as session:
-            session.add(ret)
-            session.commit()
-        
-        return ret
+            return ret
 
 class Run(SQLModel, table=True):
     graph_id: int = Field(primary_key=True, foreign_key="graph.id")
     task_id: str = Field(primary_key=True)
     loglog: List[Dict[str, Any]] = Field(sa_column=Column(JSON))
-    output: List[float] = Field(sa_column=Column(JSON))  # Changed from tuple to List
+    output: str
     score: float
     graph: Graph = Relationship(back_populates="runs")
 
@@ -176,8 +168,6 @@ class Run(SQLModel, table=True):
         self.loglog = image_to_bytes(value)
     
 
-es = create_engine(f"sqlite:///{db_name}")
-SQLModel.metadata.create_all(es)
 
 
 def put(x):
@@ -244,13 +234,23 @@ class GraphOp(BaseModel):
 async def main():
     graph = get_graph_from_a_file('seed.py')
     await graph.run(get_high_variance_task())
+
+    strongest = None
+    wins = 0
     
     for _ in range(10):
+        if wins == 5:
+            break
         graphs = get_strongest_graph(3)
-        tasks = get_high_variance_task(10)
-        
-        await asyncio.gather(*[graph.run(task) for graph in graphs for task in tasks])
+        tasks = get_high_variance_task(5)
+        result = await asyncio.gather(*[graph.run(task) for graph in graphs for task in tasks])
+
         graph = get_strongest_graph()
+        if graph == strongest:
+            wins += 1
+        else:
+            strongest = graph,
+            wins = 0
 
         run = await graph.run(get_high_variance_task())
         ret = custom(
@@ -274,4 +274,30 @@ async def main():
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="AFlow Optimizer")
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=['zero', 'counts'],
+        required=True,
+        help="Dataset type",
+    )
+    parser.add_argument(
+        "--db_name",
+        type=str,
+        default="db.sqlite",
+        help="Optimized result save db",
+    )
+    parser.add_argument(
+        "--seed",
+        type=str,
+        default="seed.py",
+        help="initial graph python file",
+    )
+    args = parser.parse_args()
+    with open(f"{args.dataset}.py", "r") as f:
+        exec(f.read())
+    
+    es = create_engine(f"sqlite:///{args.db_name}")
+    SQLModel.metadata.create_all(es)
     asyncio.run(main())

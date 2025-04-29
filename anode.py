@@ -1,16 +1,13 @@
 import re
-import typing
-from typing import Any, Dict, Tuple, Type
+from typing import Any, Dict, Type
 from pydantic import BaseModel, Field
 from openai import OpenAI
 import base64
 from io import BytesIO
-import asyncio
 from PIL import Image
-from pydantic import BeforeValidator
-from typing_extensions import Annotated
 from loguru import logger
 from typing import get_args
+import wandb
 
 
 def to_base64(image: Image.Image):
@@ -38,6 +35,8 @@ class LLM:
             for stuff in prompt:
                 if isinstance(stuff, str):
                     content.append({"type": "text", "text": stuff})
+                elif stuff is None:
+                    pass
                 else:
                     assert isinstance(stuff, Image.Image), prompt
                     content.append({"type": "image_url", "image_url": {"url": to_base64(stuff)}})
@@ -49,8 +48,27 @@ class LLM:
             temperature=0,
         ).choices[0].message.content
 
+def convert_images_to_wandb(data):
+    if data is None:
+        return None
+    if isinstance(data, Image.Image):
+        return str(data)  # wandb.Image(data) throws an error
+    elif isinstance(data, str):
+        return data
+    if isinstance(data, dict):
+        return {k: convert_images_to_wandb(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [convert_images_to_wandb(item) for item in data]
+    elif isinstance(data, tuple):
+        return tuple(convert_images_to_wandb(item) for item in data)
+    else:
+        assert False, type(data)
+    
 def lmm(*args, **kwargs):
-    return LLM(model='qwen-vl-max-latest').aask(prompt=args, **kwargs)
+    ret = LLM(model='qwen-vl-max-latest').aask(prompt=args, **kwargs)
+    print(convert_images_to_wandb({'prompt': args, 'response': ret}))
+    wandb.log(convert_images_to_wandb({'prompt': args, 'response': ret}))
+    return ret
 
 
 class ActionNode:

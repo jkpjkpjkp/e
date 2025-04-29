@@ -1,36 +1,16 @@
 from anode import lmm  # a convenient wrapper around lmm api calls, takes in str or Image.Image as args
 from PIL import Image
 
-PROMPT0 = "How many {label}s is in the image? let's think step by step and put final answer in curly braces like this: {{final_numeric_answer}}"
-PROMPT1 = """when answering question 'How many {label}s is visible in the image', a first step can be outputting a bounding box containing area that is related to this question. can you output the coordinates of a x y x y bounding box between <bbox> and </bbox>,  that contains all relevant information and keeps out irrelevant parts?"""
-PROMPT2 = """to answer 'How many {label}s is visible in the image', a first step can be to split the image in 2 and examine each. output the coordinates of a x y x y bounding box between <bbox> and </bbox>, that is one half of the image we should split into. be careful not to cut through any object of interest"""
+COMPREHENSIVE_VQA_PROMPT = """You are an expert visual question answering system specialized in complex reasoning tasks. Analyze the image and the question meticulously.
+1.  **Identify all Rules:** Extract and list all explicit rules, conditions, and parameters mentioned in the question text (e.g., base values, modifiers, multipliers, stopping conditions, selection criteria).
+2.  **Extract Visual Data:** Identify and list relevant information from the image for each element involved (e.g., for each plant: pot color, plant type, label, lamp configuration above it, position relative to water).
+3.  **Apply Rules Step-by-Step:** For problems involving calculations or simulations (like growth rates), show the detailed calculation for EACH element, applying all relevant rules and visual data identified in the previous steps. Clearly state the formula used for each calculation.
+4.  **Determine Final State/Outcome:** Based on the step-by-step application of rules and any stopping conditions or selection criteria mentioned in the question (e.g., which plant reaches a height first, which items are selected), determine the final answer.
+5.  **Format Answer:** Present the final answer clearly and concisely, addressing all parts of the original question. If calculations were performed, briefly summarize the key results supporting the answer. Ensure the final answer strictly adheres to any requested format (e.g., comma-separated list, specific value).
+Provide only the final answer based *strictly* on the provided image and text. Do not add external knowledge. Show your work clearly as requested above before the final answer line."""
 
-def run(image: Image.Image, label: str) -> int:
-    ret = lmm(image, PROMPT0.format(label=label))
-    ret = int(ret.response.split('{{')[1].split('}}')[0])
-    if ret <= 4:
-        return ret
-
-    ret = lmm(image, PROMPT1.format(label=label))
-    bbox_str = ret.response.split('<bbox>')[1].split('</bbox>')[0]
-    bbox = tuple(float(x) for x in bbox_str.replace((',', '(', ')', '[', ']'), ' ').split())
-    image = image.crop(bbox)
-
-    ret = lmm(image, PROMPT2.format(label=label))
-    bbox_str = ret.response.split('<bbox>')[1].split('</bbox>')[0]
-    bbox1 = tuple(float(x) for x in bbox_str.replace((',', '(', ')', '[', ']'), ' ').split())
-    # bbox2 is the largest rectangle in remains of image after cropping out bbox1
-    w, h = image.size
-    x1, y1, x2, y2 = bbox1
-    candidates = []
-    if x1 > 0:
-        candidates.append((0, 0, x1, h))
-    if x2 < w:
-        candidates.append((x2, 0, w, h))
-    if y1 > 0:
-        candidates.append((0, 0, w, y1))
-    if y2 < h:
-        candidates.append((0, y2, w, h))
-    bbox2 = max(candidates, key=lambda x: (x[2] - x[0]) * (x[3] - x[1]))
-
-    return run(image.crop(bbox1), label) + run(image.crop(bbox2), label)
+def run(image: Image.Image, question: str) -> str:
+    if image.width * image.height > 1500 ** 2:
+        image = image.thumbnail((1500, 1500)) # to avoid 'API Payload Too Large'
+    ret = lmm(COMPREHENSIVE_VQA_PROMPT, image, question)
+    return ret.split('\n')[-1]
