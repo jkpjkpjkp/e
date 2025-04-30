@@ -47,6 +47,8 @@ class Graph(SQLModel, table=True):
             )
 
     async def run(self, task):
+        assert isinstance(task, dict)
+        assert task['id'] and task['image'] and task['answer'] and task['question']
         with S(es) as session:
             ret = session.exec(
                 select(Run)
@@ -237,20 +239,42 @@ async def main():
 
     strongest = None
     wins = 0
-    
-    for _ in range(10):
-        if wins == 5:
+    best_score = -10000
+    best_for = 0
+
+    graphs = get_strongest_graph(100)
+    tasks = get_high_variance_task(1)
+    result = await asyncio.gather(*[graph.run(task) for graph in graphs for task in tasks])
+
+    for _ in range(100):
+        if wins >= 5 or best_for >= 5:
             break
+        
+        with S(es) as session:
+            assert set(session.exec(
+                select(Run.graph_id).group_by(Run.graph_id)
+            ).all()) == set(
+                session.exec(
+                select(Graph.id)
+            ).all())
+
         graphs = get_strongest_graph(3)
         tasks = get_high_variance_task(5)
         result = await asyncio.gather(*[graph.run(task) for graph in graphs for task in tasks])
 
         graph = get_strongest_graph()
+
         if graph == strongest:
             wins += 1
         else:
             strongest = graph,
             wins = 0
+        
+        if graph.score >= best_score:
+            best_score = graph.score
+            best_for = 0
+        else:
+            best_for += 1
 
         run = await graph.run(get_high_variance_task())
         ret = custom(
@@ -270,6 +294,8 @@ async def main():
             change=ret.modification,
         )
         put(graph)
+        tasks = get_high_variance_task(5)
+        result = await asyncio.gather(*[graph.run(task) for task in tasks])
 
 
 
