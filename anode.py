@@ -7,7 +7,6 @@ from io import BytesIO
 from PIL import Image
 from loguru import logger
 from typing import get_args
-import wandb
 
 
 def to_base64(image: Image.Image):
@@ -48,26 +47,8 @@ class LLM:
             temperature=0,
         ).choices[0].message.content
 
-def convert_images_to_wandb(data):
-    if data is None:
-        return None
-    if isinstance(data, Image.Image):
-        return str(data)  # wandb.Image(data) throws an error
-    elif isinstance(data, str):
-        return data
-    if isinstance(data, dict):
-        return {k: convert_images_to_wandb(v) for k, v in data.items()}
-    elif isinstance(data, list):
-        return [convert_images_to_wandb(item) for item in data]
-    elif isinstance(data, tuple):
-        return tuple(convert_images_to_wandb(item) for item in data)
-    else:
-        assert False, type(data)
-    
 def lmm(*args, **kwargs):
     ret = LLM(model='qwen-vl-max-latest').aask(prompt=args, **kwargs)
-    print(convert_images_to_wandb({'prompt': args, 'response': ret}))
-    wandb.log(convert_images_to_wandb({'prompt': args, 'response': ret}))
     return ret
 
 

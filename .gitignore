@@ -12,4 +12,4 @@ wheels/
 one.sqlite
 wandb/
 *.parquet
-db.sqlite
+*.sqlite

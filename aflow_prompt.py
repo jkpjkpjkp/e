@@ -33,7 +33,6 @@ def format_lmm_io_log(log):
     return ret
 
 def format_log(log):
-    log.pop('wandb')
     ret = str(log)
     assert len(ret) < 5000
     return ret

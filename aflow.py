@@ -11,9 +11,8 @@ from aflow_prompt import WORKFLOW_OPTIMIZE_PROMPT, WORKFLOW_OPTIMIZE_GUIDANCE, f
 from anode import custom
 import pydantic._internal._model_construction
 import base64
-import wandb
 import argparse
-
+import sys
 
 class Graph(SQLModel, table=True):
     id: int = Field(primary_key=True)
@@ -58,64 +57,78 @@ class Graph(SQLModel, table=True):
             if ret:
                 return ret
 
-        with wandb.init() as wandb_run:
-            namespace = {
-                '__name__': '__exec__',
-                '__package__': None,
-            }
+        namespace = {
+            '__name__': '__exec__',
+            '__package__': None,
+        }
 
-            assert task['image']
-            assert task['question']
-            try:
-                exec(self.graph, namespace)
-                run = namespace.get('run')
-                ret = run(task['image'], task['question'])
-            except Exception as e:
-                print(f'ERROR Graph.run: {e}')
-                ret = Run(
-                    graph_id=self.id,
-                    task_id=task['id'],
-                    log={
-                        'input': (task['image'], task['question']),
-                        'output': f'ERROR Graph.run: {e}',
-                        'correct answer': task['answer'],
-                        'wandb': {
-                            'run_id': wandb_run.id,
-                            'url': wandb_run.url
-                        }
-                    },
-                    output=f'ERROR Graph.run: {e}',
-                    score=0,
-                )
-                with S(es) as session:
-                    session.add(ret)
-                    session.commit()
-                
-                raise
-            
-            score = loss(output=ret, answer=task['answer'])
-            
+        assert task['image']
+        assert task['question']
+        trace_log = []
+        try:
+            exec(self.graph, namespace)
+            run = namespace.get('run')                
+            def trace_calls(frame, event, arg):
+                if event == 'call':
+                    func_name = frame.f_code.co_name
+                    args = frame.f_locals
+                    trace_log.append({
+                        'type': 'call',
+                        'func_name': func_name,
+                        'args': args,
+                    })
+                    return trace_calls
+                elif event == 'return':
+                    func_name = frame.f_code.co_name
+                    for i, call in reversed(enumerate(trace_log)):
+                        if call['func_name'] == func_name:
+                            trace_log[i]['return'] = arg
+                            break
+                return None
+
+            sys.settrace(trace_calls)
+            ret = run(task['image'], task['question'])
+            sys.settrace(None)
+        except Exception as e:
+            print(f'ERROR Graph.run: {e}')
             ret = Run(
                 graph_id=self.id,
                 task_id=task['id'],
-                output=ret,
                 log={
                     'input': (task['image'], task['question']),
-                    'output': ret,
+                    'output': f'ERROR Graph.run: {e}',
                     'correct answer': task['answer'],
-                    'wandb': {
-                        'run_id': wandb_run.id,
-                        'url': wandb_run.url
-                    }
+                    'tracelog': trace_log,
                 },
-                score=score,
+                output=f'ERROR Graph.run: {e}',
+                score=0,
             )
             with S(es) as session:
-                session.expire_on_commit = False
                 session.add(ret)
                 session.commit()
             
-            return ret
+            raise
+        
+        score = loss(output=ret, answer=task['answer'])
+        
+        ret = Run(
+            graph_id=self.id,
+            task_id=task['id'],
+            output=ret,
+            log={
+                'input': (task['image'], task['question']),
+                'output': ret,
+                'correct answer': task['answer'],
+                'tracelog': trace_log,
+            },
+            score=score,
+        )
+        with S(es) as session:
+            session.expire_on_commit = False
+            session.add(ret)
+            session.commit()
+        
+        return ret
 
 class Run(SQLModel, table=True):
     graph_id: int = Field(primary_key=True, foreign_key="graph.id")
