@@ -264,6 +264,7 @@ async def main():
 
         graph = get_strongest_graph()
 
+
         if graph == strongest:
             wins += 1
         else:

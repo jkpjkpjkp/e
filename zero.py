@@ -21,7 +21,8 @@ def get_task_by_id(id):
     row['question'] = row['question_text']
     row['answer'] = row['question_answer']
     row['id'] = id
-    return row
+    ret = dict(row)
+    return ret
 
 def llm_as_judge(expected_output, prediction):
     llm = LLM('deepseek-chat')
