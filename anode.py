@@ -8,6 +8,20 @@ from PIL import Image
 from loguru import logger
 from typing import get_args
 
+# Global variables for model names
+inference_model = None
+optimization_model = None
+
+# Setter functions
+def set_inference_model(model_name):
+    global inference_model
+    inference_model = model_name
+
+def set_optimization_model(model_name):
+    global optimization_model
+    optimization_model = model_name
+
+
 
 def to_base64(image: Image.Image):
     buffered = BytesIO()
@@ -48,7 +62,6 @@ class LLM:
         ).choices[0].message.content
 
 def lmm(*args, **kwargs):
-    global inference_model
     ret = LLM(model=inference_model).aask(prompt=args, **kwargs)
     return ret
 

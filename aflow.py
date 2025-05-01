@@ -13,6 +13,9 @@ import base64
 import argparse
 import sys
 import random
+import os
+
+image_cache_dir = '/data/image_cache'
 
 
 class Graph(SQLModel, table=True):
@@ -80,7 +83,8 @@ class Graph(SQLModel, table=True):
                 return trace_function_call
             elif event == 'return':
                 func_name = frame.f_code.co_name
-                for i, call in reversed(enumerate(trace_log)):
+                for i in range(len(trace_log) - 1, -1, -1):
+                    call = trace_log[i]
                     if call['func_name'] == func_name:
                         trace_log[i]['return'] = arg
                         break
@@ -145,15 +149,38 @@ def find_and_convert(tp, f):
             return f(obj)
         elif isinstance(obj, str):
             return obj
+        elif isinstance(obj, dict):
+            return {k: convert(v) for k, v in obj.items()}
         elif isinstance(obj, list):
             return [convert(x) for x in obj]
         elif isinstance(obj, tuple):
             return tuple(convert(x) for x in obj)
-        elif isinstance(obj, dict):
-            return {k: convert(v) for k, v in obj.items()}
         else:
-            raise TypeError(type(obj))
+            return obj
     return convert
+
+def img_to_str(image: Image.Image):
+    assert isinstance(image, Image.Image)
+    image_hash = hash(image.tobytes())
+    image_path = os.path.join(image_cache_dir, f'{image_hash}.png')
+    if not os.path.exists(image_path):
+        image.save(image_path)
+    return f"<__imimaimage>{image_path}</__imimaimage>"
+
+def unit_str_to_img(s: str):
+    if s.startswith('<__imimaimage>') and s.endswith('</__imimaimage>'):
+        return Image.open(s[len('<__imimaimage>'): -len('</__imimaimage>')])
+    else:
+        return s
+
+def str_to_img(s: str):
+    assert isinstance(s, str)
+    if s.startswith('<__imimaimage>') and s.endswith('</__imimaimage>'):
+        return Image.open(s[len('<__imimaimage>'): -len('</__imimaimage>')])
+    f = s.split('<__imimaimage>')
+    if len(f) == 1:
+        return s
+    return (f[0], *(Image.open(x[1].split('</__imimaimage>')[0]) + str_to_img(x[1].split('</__imimaimage>')[1])for x in f[1:]))
 
 class Run(SQLModel, table=True):
     graph_id: int = Field(primary_key=True, foreign_key="graph.id")
@@ -173,21 +200,11 @@ class Run(SQLModel, table=True):
 
     @property
     def log(self):
-        def bytes_to_image(obj):
-            assert isinstance(obj, str)
-            if obj.startswith('abragadoabragado'):
-                return Image.open(BytesIO(base64.b64decode(obj[len('abragadoabragado'):])))
-            return obj
-        return find_and_convert(str, bytes_to_image)(self.loglog)
+        return find_and_convert(str, unit_str_to_img)(self.loglog)
 
     @log.setter
     def log(self, value):
-        def image_to_bytes(obj):
-            assert isinstance(obj, Image.Image)
-            buffered = BytesIO()
-            obj.save(buffered, format="PNG")
-            return f'abragadoabragado{base64.b64encode(buffered.getvalue()).decode()}'
-        self.loglog = find_and_convert(Image.Image, image_to_bytes)(value)
+        self.loglog = find_and_convert(Image.Image, img_to_str)(value)
 
 
 def put(x):
@@ -266,7 +283,7 @@ def get_correct_incorrect(runs):
 
 
 async def main():
-    global inference_model, optimization_model, args
+    global args
 
     graph = get_graph_from_a_file(args.seed_file)
     await graph.run(get_high_variance_task())
@@ -326,9 +343,9 @@ async def main():
                 score=graph.score,
                 correct_qa='\n'.join(map(lambda x: f"question: {x.task['question']}, answer: {x.task['answer']} ", correct_runs[:5])),
                 wrong_qa='\n'.join(map(lambda x: f"question: {x.task['question']}, output(wrong): {x.output}, answer: {x.task['answer']} ", wrong_runs[:5])),
+                log=format_log(wrong_runs[-1].log),
                 operator_description=OPERATOR_DESCRIPTION,
             ),
-            *format_log(wrong_runs[-1].log),
             WORKFLOW_OPTIMIZE_GUIDANCE,
             dna=GraphOp,
         )
@@ -381,9 +398,10 @@ if __name__ == '__main__':
     with open(f"{args.dataset}.py", "r") as f:
         exec(f.read())
 
-    # Set global variables for models
-    inference_model = args.inference_model
-    optimization_model = args.optimization_model
+    # Set global variables for models using the setter functions from anode
+    from anode import set_inference_model, set_optimization_model
+    set_inference_model(args.inference_model)
+    set_optimization_model(args.optimization_model)
 
     es = create_engine(f"sqlite:///{args.db_name}")
     SQLModel.metadata.create_all(es)

@@ -64,8 +64,8 @@ Below is a detailed log of a run with this graph that ended in wrong answer:
 
 WORKFLOW_OPTIMIZE_GUIDANCE="""
 First, analyze the trace, brainstorm, and propose optimization ideas. **Only one detail should be modified**, and **no more than 5 lines of code should be changed**—extensive modifications are strictly prohibited to maintain project focus! Simplifying code by removing unnecessary steps is often highly effective. When adding new functionalities to the graph, ensure necessary libraries or modules are imported, including importing operators from `op`.
-it is encouraged that you treat the image programically, the basic being cropping it to focus on important area. 
-you can prompt the lmm to return a xml file, and use `re` to parse it, if you need specially formatted return fields. 
+it is encouraged that you use cropping on the image to focus on important area. 
+you can prompt the lmm to return specific xml fields, and use `re` to parse it. this way you can get typed return fields, for example x y x y bounding box for cropping or highlighting or analysis. 
 """
 
 OPERATOR_="{id}. {operator_name}: {desc}, with interface {interface}). \n"
