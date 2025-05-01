@@ -7,11 +7,13 @@ import asyncio
 from PIL import Image
 from io import BytesIO
 
-from aflow_prompt import WORKFLOW_OPTIMIZE_PROMPT, WORKFLOW_OPTIMIZE_GUIDANCE, format_log, format_experience
+from aflow_prompt import WORKFLOW_OPTIMIZE_PROMPT, WORKFLOW_OPTIMIZE_GUIDANCE, OPERATOR_DESCRIPTION, format_log, format_experience
 from anode import custom
 import base64
 import argparse
 import sys
+import random
+
 
 class Graph(SQLModel, table=True):
     id: int = Field(primary_key=True)
@@ -188,8 +190,6 @@ class Run(SQLModel, table=True):
         self.loglog = find_and_convert(Image.Image, image_to_bytes)(value)
 
 
-
-
 def put(x):
     with S(es) as session:
         session.add(x)
@@ -245,16 +245,30 @@ def get_high_variance_task(k=1):
     ret = [get_task_by_id(id) for id in ret]
     return ret[0] if k == 1 else ret
 
+def get_random_or_high_variance_task(k=1):
+    if random.random() < 0.1:
+        all_task_ids = get_all_task_ids()
+        selected_ids = random.sample(all_task_ids, k)
+        ret = [get_task_by_id(id) for id in selected_ids]
+        return ret[0] if k == 1 else ret
+    else:
+        return get_high_variance_task(k)
 
-class GraphOp(BaseModel):
-    plan: str = Field(description="Thoughts, analysis, of plan on how to improve the agent")
-    modification: str = Field(description="Briefly describe the modification made to the agent")
-    agent: str = Field(description="The agent code and prompts (`run` function)")
+def get_correct_incorrect(runs):
+    correct = []
+    incorrect = []
+    for run in runs:
+        if run.score > 0.9:
+            correct.append(run)
+        else:
+            incorrect.append(run)
+    return correct, incorrect
+
 
 async def main():
     global inference_model, optimization_model, args
 
-    graph = get_graph_from_a_file(args.seed)
+    graph = get_graph_from_a_file(args.seed_file)
     await graph.run(get_high_variance_task())
 
     strongest = None
@@ -263,8 +277,7 @@ async def main():
     best_for = 0
 
     graphs = get_strongest_graph(100)
-    tasks = get_high_variance_task(1)
-    result = await asyncio.gather(*[graph.run(task) for graph in graphs for task in tasks])
+    _result = await asyncio.gather(*[graph.run(get_random_or_high_variance_task()) for graph in graphs])
 
     for _ in range(100):
         if wins >= 5 or best_for >= 5:
@@ -280,9 +293,11 @@ async def main():
 
         graphs = get_strongest_graph(3)
         tasks = get_high_variance_task(5)
-        result = await asyncio.gather(*[graph.run(task) for graph in graphs for task in tasks])
+        _result = await asyncio.gather(*[graph.run(task) for graph in graphs for task in tasks])
 
         graph = get_strongest_graph()
+        while(lambda x: min(len(x[0]), len(x[1])))(get_correct_incorrect(graph.runs)) < 5:
+            await asyncio.gather(map(lambda x: graph.run(x), get_random_or_high_variance_task(5)))
 
 
         if graph == strongest:
@@ -297,14 +312,23 @@ async def main():
         else:
             best_for += 1
 
-        run = await graph.run(get_high_variance_task())
+        class GraphOp(BaseModel):
+            plan: str = Field(description="Thoughts, analysis, of plan on how to improve the agent")
+            modification: str = Field(description="Briefly describe the modification made to the agent")
+            agent: str = Field(description="The agent code and prompts (`run` function)")
+
+        correct_runs, wrong_runs = get_correct_incorrect(graph.runs)
+
         ret = custom(
             WORKFLOW_OPTIMIZE_PROMPT.format(
                 agent=graph.graph,
                 experience=format_experience(graph),
-                score=run.score,
+                score=graph.score,
+                correct_qa='\n'.join(map(lambda x: f"question: {x.task['question']}, answer: {x.task['answer']} ", correct_runs[:5])),
+                wrong_qa='\n'.join(map(lambda x: f"question: {x.task['question']}, output(wrong): {x.output}, answer: {x.task['answer']} ", wrong_runs[:5])),
+                operator_description=OPERATOR_DESCRIPTION,
             ),
-            *format_log(run.log),
+            *format_log(wrong_runs[-1].log),
             WORKFLOW_OPTIMIZE_GUIDANCE,
             dna=GraphOp,
         )
@@ -325,7 +349,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['zero', 'counts'],
+        choices=['zero', 'counts', 'vizwiz'],
         required=True,
         help="Dataset type",
     )
@@ -336,21 +360,21 @@ if __name__ == '__main__':
         help="Optimized result save db",
     )
     parser.add_argument(
-        "--seed",
+        "--seed_file",
         type=str,
-        default="seed.py",
+        default="seed1.py",
         help="initial graph python file",
     )
     parser.add_argument(
         "--inference_model",
         type=str,
-        default="qwen-vl-max-latest",
+        default="qwen-vl-plus-latest",
         help="Model to use for inference when calling lmm()",
     )
     parser.add_argument(
         "--optimization_model",
         type=str,
-        default="claude-3-7-sonnet-20250219",
+        default="qwen-vl-max-latest",
         help="Model to use for optimization",
     )
     args = parser.parse_args()

@@ -2,7 +2,7 @@ import polars as pl
 from PIL import Image
 from anode import LLM
 import io
-df = pl.read_parquet('zerobench_subquestions-00000-of-00001.parquet')
+df = pl.read_parquet('/data/zerobench_subquestions-00000-of-00001.parquet')
 
 print(df.head())
 print(df.columns)

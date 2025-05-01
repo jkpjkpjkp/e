@@ -63,5 +63,28 @@ Below is a detailed log of a run with this graph that ended in wrong answer:
 """
 
 WORKFLOW_OPTIMIZE_GUIDANCE="""
-First, analyze the trace, brainstorm, and propose optimization ideas. **Only one detail should be modified**, and **no more than 5 lines of code should be changed**—extensive modifications are strictly prohibited to maintain project focus! Simplifying code by removing unnecessary steps is often highly effective. When adding new functionalities to the graph, ensure necessary libraries or modules are imported, except for operators, which are pre-imported.
+First, analyze the trace, brainstorm, and propose optimization ideas. **Only one detail should be modified**, and **no more than 5 lines of code should be changed**—extensive modifications are strictly prohibited to maintain project focus! Simplifying code by removing unnecessary steps is often highly effective. When adding new functionalities to the graph, ensure necessary libraries or modules are imported, including importing operators from `op`.
+it is encouraged that you treat the image programically, the basic being cropping it to focus on important area. 
+you can prompt the lmm to return a xml file, and use `re` to parse it, if you need specially formatted return fields. 
 """
+
+OPERATOR_="{id}. {operator_name}: {desc}, with interface {interface}). \n"
+
+OPERATOR_DESCRIPTION = (
+    OPERATOR_.format(
+        id=1,
+        operator_name="lmm",
+        desc="a convenient wrapper around a large multimodal model api call",
+        interface="lmm(*args: tuple[str | Image.Image]) -> str ",
+    ) + OPERATOR_.format(
+        id=2,
+        operator_name="grounding_dino",
+        desc="GroundingDINO object detection model",
+        interface="""grounding_dino(image: Image.Image, objects: List[str], box_threshold=0.2, text_threshold=0.15) -> (List[Bbox], Image.Image), where Bbox is 
+`class Bbox(TypedDict):
+    box: List[float] # [x1, y1, x2, y2]
+    score: float
+    label: str`
+and Image is the image with bbox and labels drawn""",
+    )
+)

@@ -9,12 +9,13 @@ def get_all_task_ids():
 def get_task_by_id(id):
     ret = df[id].to_dict()
     ret['image'] = Image.open(ret['image_path'][0])
-    ret['label'] = ret['label'][0]
+    ret['question'] = f"How many {ret['label'][0]}s are there in this image?"
     ret['answer'] = len(ret['annotations'][0])
     ret['id'] = id
     return ret
 
 def loss(output, answer) -> float:
+    output = int(output)
     score = 1 - 4.2 * abs(output - answer) / answer
     score = max(0, score)
     return score
