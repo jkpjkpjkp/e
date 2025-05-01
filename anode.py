@@ -48,9 +48,9 @@ class LLM:
         ).choices[0].message.content
 
 def lmm(*args, **kwargs):
-    ret = LLM(model='qwen-vl-max-latest').aask(prompt=args, **kwargs)
+    global inference_model
+    ret = LLM(model=inference_model).aask(prompt=args, **kwargs)
     return ret
-
 
 class ActionNode:
     def __init__(self, pydantic_model: Type[BaseModel]):
@@ -58,7 +58,7 @@ class ActionNode:
 
     def xml_compile(self, context):
         """
-        Compile the prompt to make it easier for the model to understand the xml format.
+        Compile the prompt to make it easier for the model to understand intended output xml format.
         """
         # Construct the example using the field names and their types
         examples = []
@@ -142,12 +142,7 @@ class ActionNode:
                 result[k] = tuple(inner_type(x) for x in v)
         return result
 
-    def fill(
-        self,
-        *,
-        context,
-        llm,
-    ):
+    def fill(self, *, context, llm):
         self.llm = llm
         self.context = context
         context = self.xml_compile(context=self.context)
@@ -160,11 +155,12 @@ class GenerateOp(BaseModel):
     response: str = Field(default="", description="Your solution for this problem")
 
 def custom(*args, dna=GenerateOp):
+    global optimization_model
     for x in args:
         assert x
     if len(args) == 1 and isinstance(args[0], (tuple, list)):
         args = args[0]
-    return ActionNode(dna).fill(context=args, llm=LLM(model='claude-3-7-sonnet-20250219'))
+    return ActionNode(dna).fill(context=args, llm=LLM(model=optimization_model))
 
 def test_custom():
     print(custom('hi! '))

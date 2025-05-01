@@ -46,8 +46,11 @@ class Graph(SQLModel, table=True):
 
     async def run(self, task):
         assert isinstance(task, dict)
-        assert task['id'] and task['image'] and task['answer']
-        # Question is now optional for image-only models
+        assert isinstance(task['image'], Image.Image)
+        assert isinstance(task['question'], str)
+        assert task['answer']
+        assert task['id']
+
         with S(es) as session:
             ret = session.exec(
                 select(Run)
@@ -62,36 +65,30 @@ class Graph(SQLModel, table=True):
             '__package__': None,
         }
 
-        assert task['image']
-        # Question may be optional depending on the model
         trace_log = []
+        def trace_function_call(frame, event, arg):
+            if event == 'call':
+                func_name = frame.f_code.co_name
+                args = frame.f_locals
+                trace_log.append({
+                    'type': 'call',
+                    'func_name': func_name,
+                    'args': args,
+                })
+                return trace_function_call
+            elif event == 'return':
+                func_name = frame.f_code.co_name
+                for i, call in reversed(enumerate(trace_log)):
+                    if call['func_name'] == func_name:
+                        trace_log[i]['return'] = arg
+                        break
+            return None
         try:
             exec(self.graph, namespace)
             run = namespace.get('run')
-            def trace_calls(frame, event, arg):
-                if event == 'call':
-                    func_name = frame.f_code.co_name
-                    args = frame.f_locals
-                    trace_log.append({
-                        'type': 'call',
-                        'func_name': func_name,
-                        'args': args,
-                    })
-                    return trace_calls
-                elif event == 'return':
-                    func_name = frame.f_code.co_name
-                    for i, call in reversed(enumerate(trace_log)):
-                        if call['func_name'] == func_name:
-                            trace_log[i]['return'] = arg
-                            break
-                return None
 
-            sys.settrace(trace_calls)
-            # Handle both image-only and image+question cases
-            if 'question' in task and task['question']:
-                ret = run(task['image'], task['question'])
-            else:
-                ret = run(task['image'])
+            sys.settrace(trace_function_call)
+            ret = run(task['image'], task['question'])
             sys.settrace(None)
         except Exception as e:
             print(f'ERROR Graph.run: {e}')
@@ -180,7 +177,7 @@ class Run(SQLModel, table=True):
                 return Image.open(BytesIO(base64.b64decode(obj[len('abragadoabragado'):])))
             return obj
         return find_and_convert(str, bytes_to_image)(self.loglog)
-    
+
     @log.setter
     def log(self, value):
         def image_to_bytes(obj):
@@ -255,7 +252,9 @@ class GraphOp(BaseModel):
     agent: str = Field(description="The agent code and prompts (`run` function)")
 
 async def main():
-    graph = get_graph_from_a_file('seed.py')
+    global inference_model, optimization_model, args
+
+    graph = get_graph_from_a_file(args.seed)
     await graph.run(get_high_variance_task())
 
     strongest = None
@@ -342,9 +341,25 @@ if __name__ == '__main__':
         default="seed.py",
         help="initial graph python file",
     )
+    parser.add_argument(
+        "--inference_model",
+        type=str,
+        default="qwen-vl-max-latest",
+        help="Model to use for inference when calling lmm()",
+    )
+    parser.add_argument(
+        "--optimization_model",
+        type=str,
+        default="claude-3-7-sonnet-20250219",
+        help="Model to use for optimization",
+    )
     args = parser.parse_args()
     with open(f"{args.dataset}.py", "r") as f:
         exec(f.read())
+
+    # Set global variables for models
+    inference_model = args.inference_model
+    optimization_model = args.optimization_model
 
     es = create_engine(f"sqlite:///{args.db_name}")
     SQLModel.metadata.create_all(es)

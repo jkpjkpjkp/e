@@ -63,7 +63,5 @@ Below is a detailed log of a run with this graph that ended in wrong answer:
 """
 
 WORKFLOW_OPTIMIZE_GUIDANCE="""
-First, analyze the trace, brainstorm and provide optimization ideas. **Only one detail should be modified**, and **no more than 5 lines of code should be changed**—extensive modifications are strictly prohibited to maintain project focus!
-Sometimes it is a very good idea to shrink code and remove unnecessary steps. 
-When introducing new functionalities in the graph, please make sure to import the necessary libraries or modules yourself, except for operator, prompts, which have already been automatically imported.
+First, analyze the trace, brainstorm, and propose optimization ideas. **Only one detail should be modified**, and **no more than 5 lines of code should be changed**—extensive modifications are strictly prohibited to maintain project focus! Simplifying code by removing unnecessary steps is often highly effective. When adding new functionalities to the graph, ensure necessary libraries or modules are imported, except for operators, which are pre-imported.
 """
