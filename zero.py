@@ -17,11 +17,12 @@ def get_task_by_id(id):
     row = rows.row(0, named=True)
     images = [Image.open(io.BytesIO(x['bytes'])) for x in row['question_images_decoded']]
     assert len(images) == 1
+    ret = dict(row)
     row['image'] = images[0]
     row['question'] = row['question_text']
     row['answer'] = row['question_answer']
     row['id'] = id
-    ret = dict(row)
+    row['loss'] = lambda x: loss(x, row['answer'])
     return ret
 
 def llm_as_judge(expected_output, prediction):

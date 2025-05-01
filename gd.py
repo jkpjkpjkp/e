@@ -73,7 +73,9 @@ def plot_bounding_boxes(img: Image.Image, bounding_boxes: List[Bbox]):
     'silver',
     ]
 
-    font = ImageFont.truetype("NotoSansCJK-Regular.ttc", size=14)
+    # font = ImageFont.truetype("NotoSansCJK-Regular.ttc", size=14)
+    font = ImageFont.load_default(size=14)
+
 
     for i, bounding_box in enumerate(bounding_boxes):
         color = colors[i % len(colors)]
@@ -118,13 +120,10 @@ def get_dino(max_parallel=1):
             return None, 'Please upload an image.', []
         if not objects:
             return image, 'Please specify at least one object.', []
-        try:
-            detections = _dino_factory._run(image, objects, box_threshold, text_threshold)
-            drawn_image = plot_bounding_boxes(image.copy(), detections)
-            details = format_detections(detections)
-            return drawn_image, details, detections
-        except Exception as e:
-            return image, f'Error: {str(e)}', []
+        detections = _dino_factory._run(image, objects, box_threshold, text_threshold)
+        # drawn_image = plot_bounding_boxes(image.copy(), detections)
+        # details = format_detections(detections)
+        return detections
 
     return process_dino
 

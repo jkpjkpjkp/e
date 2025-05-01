@@ -182,10 +182,10 @@ def custom(*args, dna=GenerateOp):
             if isinstance(oo, (str, Image.Image)):
                 processed_args.append(oo)
             else:
-                assert isinstance(oo, list)
+                # Our updated str_to_img returns a tuple
                 processed_args.extend(oo)
         else:
-            assert(isinstance(proessed_args, Image.Image))
+            # Just append non-string arguments (like images) directly
             processed_args.append(arg)
 
     return ActionNode(dna).fill(context=processed_args, llm=LLM(model=optimization_model))

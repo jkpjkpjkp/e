@@ -15,9 +15,15 @@ import sys
 import random
 import os
 from util import *
+from tqdm import tqdm
 
 image_cache_dir = '/data/image_cache'
 
+es = None
+
+def set_es(_es):
+    global es
+    es = _es
 
 class Graph(SQLModel, table=True):
     id: int = Field(primary_key=True)
@@ -64,7 +70,10 @@ class Graph(SQLModel, table=True):
                 .where(Run.task_id == task['id'])
             ).first()
             if ret:
+                print(f"Cache hit for graph_id={self.id}, task_id={task['id']}")
                 return ret
+            else:
+                print(f"Cache miss for graph_id={self.id}, task_id={task['id']} - creating new run")
 
         namespace = {
             '__name__': '__exec__',
@@ -116,15 +125,26 @@ class Graph(SQLModel, table=True):
             )
             with S(es) as session:
                 session.add(ret)
+                try:
+                    session.flush()  # Flush explicitly to catch the error before commit
+                except Exception as e:
+                    print("Error during flush. Inspecting new objects:")
+                    for obj in session.new:  # New objects to be inserted
+                        print(f"Object: {obj}")
+                        for attr, value in obj.__dict__.items():
+                            if attr != '_sa_instance_state':  # Ignore SQLAlchemy internal state
+                                print(f"  {attr}: Type={type(value)}, Value={value}")
+                    raise
                 session.commit()
 
             raise
 
-        score = loss(output=ret, answer=task['answer'])
+        score = task['loss'](ret)
 
         # Create input tuple based on whether question is present
         input_data = (task['image'],) if 'question' not in task or not task['question'] else (task['image'], task['question'])
 
+        print(trace_log)
         ret = Run(
             graph_id=self.id,
             task_id=task['id'],
@@ -140,6 +160,16 @@ class Graph(SQLModel, table=True):
         with S(es) as session:
             session.expire_on_commit = False
             session.add(ret)
+            try:
+                session.flush()  # Flush explicitly to catch the error before commit
+            except Exception as e:
+                print("Error during flush. Inspecting new objects:")
+                for obj in session.new:  # New objects to be inserted
+                    print(f"Object: {obj}")
+                    for attr, value in obj.__dict__.items():
+                        if attr != '_sa_instance_state':  # Ignore SQLAlchemy internal state
+                            print(f"  {attr}: Type={type(value)}, Value={value}")
+                raise
             session.commit()
 
         return ret
@@ -172,6 +202,16 @@ class Run(SQLModel, table=True):
 def put(x):
     with S(es) as session:
         session.add(x)
+        try:
+            session.flush()  # Flush explicitly to catch the error before commit
+        except Exception as e:
+            print("Error during flush. Inspecting new objects:")
+            for obj in session.new:  # New objects to be inserted
+                print(f"Object: {obj}")
+                for attr, value in obj.__dict__.items():
+                    if attr != '_sa_instance_state':  # Ignore SQLAlchemy internal state
+                        print(f"  {attr}: Type={type(value)}, Value={value}")
+            raise
         session.commit()
         return x
 
@@ -184,6 +224,16 @@ def get_graph_from_a_file(path: str):
         if existing:
             return existing
         session.add(graph)
+        try:
+            session.flush()  # Flush explicitly to catch the error before commit
+        except Exception as e:
+            print("Error during flush. Inspecting new objects:")
+            for obj in session.new:  # New objects to be inserted
+                print(f"Object: {obj}")
+                for attr, value in obj.__dict__.items():
+                    if attr != '_sa_instance_state':  # Ignore SQLAlchemy internal state
+                        print(f"  {attr}: Type={type(value)}, Value={value}")
+            raise
         session.commit()
         session.refresh(graph)
     return graph
@@ -206,31 +256,39 @@ def get_high_variance_task(k=1):
     ret = []
     with S(es) as session:
         run_task_ids = session.exec(select(Run.task_id)).all()
-        for task_id in get_all_task_ids():
+        print(f"Existing run_task_ids: {run_task_ids}")
+        all_task_ids = get_all_task_ids()
+        print(f"Total available task_ids: {len(all_task_ids)}")
+        for task_id in all_task_ids:
             if task_id not in run_task_ids:
                 ret.append(task_id)
+    print(f"New tasks not yet run: {len(ret)}")
     ret = ret[:k]
     with S(es) as session:
-        ret.extend(
-            session.exec(
-                select(Run.task_id).
-                group_by(Run.task_id).
-                order_by(func.sqrt(
-                    func.avg(Run.score * Run.score) - func.avg(Run.score) * func.avg(Run.score)
-                ).desc())
-                .limit(k - len(ret))
-            ).all()
-        )
+        high_variance_tasks = session.exec(
+            select(Run.task_id).
+            group_by(Run.task_id).
+            order_by(func.sqrt(
+                func.avg(Run.score * Run.score) - func.avg(Run.score) * func.avg(Run.score)
+            ).desc())
+            .limit(k - len(ret))
+        ).all()
+        print(f"High variance tasks: {high_variance_tasks}")
+        ret.extend(high_variance_tasks)
     ret = [get_task_by_id(id) for id in ret]
+    print(f"Selected tasks: {[task['id'] for task in ret]}")
     return ret[0] if k == 1 else ret
 
 def get_random_or_high_variance_task(k=1):
     if random.random() < 0.1:
+        print("Selecting random tasks")
         all_task_ids = get_all_task_ids()
         selected_ids = random.sample(all_task_ids, k)
         ret = [get_task_by_id(id) for id in selected_ids]
+        print(f"Randomly selected tasks: {[task['id'] for task in ret]}")
         return ret[0] if k == 1 else ret
     else:
+        print("Selecting high variance tasks")
         return get_high_variance_task(k)
 
 def get_correct_incorrect(runs):
@@ -256,9 +314,10 @@ async def main():
     best_for = 0
 
     graphs = get_strongest_graph(100)
-    _result = await asyncio.gather(*[graph.run(get_random_or_high_variance_task()) for graph in graphs])
+    # Run initial tasks for each graph
+    await asyncio.gather(*[graph.run(get_random_or_high_variance_task()) for graph in graphs])
 
-    for _ in range(100):
+    for _ in tqdm(range(100)):
         if wins >= 5 or best_for >= 5:
             break
 
@@ -272,11 +331,21 @@ async def main():
 
         graphs = get_strongest_graph(3)
         tasks = get_high_variance_task(5)
-        _result = await asyncio.gather(*[graph.run(task) for graph in graphs for task in tasks])
+        # Run tasks for each graph
+        await asyncio.gather(*[graph.run(task) for graph in graphs for task in tasks])
 
         graph = get_strongest_graph()
-        while(lambda x: min(len(x[0]), len(x[1])))(get_correct_incorrect(graph.runs)) < 5:
-            await asyncio.gather(map(lambda x: graph.run(x), get_random_or_high_variance_task(5)))
+        while True:
+            correct, incorrect = get_correct_incorrect(graph.runs)
+            print(f"Current runs: {len(graph.runs)}, Correct: {len(correct)}, Incorrect: {len(incorrect)}")
+            if min(len(correct), len(incorrect)) >= 5:
+                break
+
+            # Fix: map() returns an iterator, not a list of coroutines
+            # Convert to a list of coroutines that asyncio.gather can unpack
+            tasks = get_random_or_high_variance_task(5)
+            print(f"Running additional tasks: {[task['id'] for task in tasks]}")
+            await asyncio.gather(*[graph.run(task) for task in tasks])
 
 
         if graph == strongest:
@@ -319,7 +388,8 @@ async def main():
         )
         put(graph)
         tasks = get_high_variance_task(5)
-        result = await asyncio.gather(*[graph.run(task) for task in tasks])
+        # Run final tasks for the new graph
+        await asyncio.gather(*[graph.run(task) for task in tasks])
 
 
 
@@ -328,7 +398,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['zero', 'counts', 'vizwiz'],
+        choices=['zero', 'counts', 'viswiz'],
         required=True,
         help="Dataset type",
     )
