@@ -9,7 +9,6 @@ from io import BytesIO
 
 from aflow_prompt import WORKFLOW_OPTIMIZE_PROMPT, WORKFLOW_OPTIMIZE_GUIDANCE, format_log, format_experience
 from anode import custom
-import pydantic._internal._model_construction
 import base64
 import argparse
 import sys

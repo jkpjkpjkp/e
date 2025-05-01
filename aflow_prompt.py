@@ -37,63 +37,33 @@ def format_log(log):
     assert len(ret) < 5000
     return ret
 
-WORKFLOW_OPTIMIZE_PROMPT = """We are designing an agent that can answer vqa questions.  
-We need to implement function `run`, that takes in an image and a question and returns the answer.
-Please reconstruct and optimize the function. You can add, modify, or delete functions, parameters, or prompts. Include your 
-Ensure the code you provide is complete and correct, except for `lmm` method, which is a convenient wrapper around a large multimodal model inference. `lmm` takes in any number of str or Image.Image args.
-When optimizing, you can incorporate critical thinking methods like review, revise, ensemble (generating multiple answers through different/similar prompts, then voting/integrating/checking the majority to obtain a final answer), selfAsk, etc. Consider 
-Python's loops (for, while, list comprehensions), conditional statements (if-elif-else, ternary operators), 
-or machine learning techniques (e.g., linear regression, decision trees, neural networks, clustering). The graph 
-complexity should not exceed 10. Use logical and control flow (IF-ELSE, loops) for a more enhanced graphical representation.
-Output the modified code under same setting and function name (`run`).
-Complex agents may yield better results, but take into consideration llm's limited capabilities and potential information loss. It's crucial to include necessary context.
+WORKFLOW_OPTIMIZE_PROMPT = """We are designing an agent that can answer visual question answering (VQA) questions.
+We need to implement the function run, which takes in an image and a question and returns the answer. Please reconstruct and optimize the function. You can add, modify, or delete functions, parameters, or prompts. Ensure the code you provide is complete and correct, except for the lmm method, which is a convenient wrapper around a large multimodal model inference. The lmm method takes in any number of str or Image.Image args.
 
+When optimizing, you can incorporate critical thinking methods like review, revise, ensemble (generating multiple answers through different/similar prompts, then voting/integrating/checking the majority to obtain a final answer), selfAsk, etc. Consider using Python's loops (for, while, list comprehensions), conditional statements (if-elif-else, ternary operators), or machine learning techniques (e.g., linear regression, decision trees, neural networks, clustering). The graph complexity should not exceed 10. Use logical and control flow (IF-ELSE, loops) for a more enhanced graphical representation.
 
-Here is a graph and the corresponding prompt that performed excellently in a previous iteration. You must make further optimizations and improvements based on this graph. The modified graph must differ from the provided example, and the specific differences should be noted within the <modification>xxx</modification> section.\n
+Output the modified code under the same setting and function name (run).
+
+Complex agents may yield better results, but take into consideration the LLM's limited capabilities and potential information loss. It's crucial to include necessary context.
+
+Here is a graph that performed excellently in a previous iteration for VQA. You must make further optimizations and improvements based on this graph. The modified graph must differ from the provided example, and the specific differences should be noted within the <modification>xxx</modification> section.\n
 <sample>
     <experience>{experience}</experience>
-    <modification>(such as:add /delete /modify / ...)</modification>
-    <score>{score}</score>
-    <agent>{agent}</agent>
-</sample>
-Below are the logs of some results with the aforementioned Graph that performed well but encountered errors, which can be used as references for optimization:
-
-"""
-
-
-COUNT_OPTIMIZE_PROMPT = """We are designing an agent that can count objects in an image.  
-We need to implement function `run`, that takes in an image and a text label and outputs the number of object {{label}} in image.
-Please reconstruct and optimize the function. You can add, modify, or delete functions, parameters, or prompts. Include your 
-Ensure the code you provide is complete and correct, except for `custom` method, which is a convenient wrapper around a lmm call, taking in its args interleaved str and Image.Image and a pydantic model (`dna`) for output. When 
-optimizing, you can incorporate critical thinking methods like review, revise, ensemble (generating multiple answers through different/similar prompts, then voting/integrating/checking the majority to obtain a final answer), selfAsk, etc. Consider 
-Python's loops (for, while, list comprehensions), conditional statements (if-elif-else, ternary operators), 
-or machine learning techniques (e.g., linear regression, decision trees, neural networks, clustering). The graph 
-complexity should not exceed 10. Use logical and control flow (IF-ELSE, loops) for a more enhanced graphical representation.
-Output the modified code under same setting and function name (`run`).
-Complex agents may yield better results, but take into consideration llm's limited capabilities and potential information loss. It's crucial to include necessary context.
-
-
-Here is a graph that performed excellently in a previous iteration. You must make further optimizations and improvements based on this graph. The modified graph must differ from the provided example, and the specific differences should be noted within the <modification>xxx</modification> section.\n
-<sample>
-    <experience>{experience}</experience>
-    <modification>(such as:add /delete /modify / ...)</modification>
     <score>{score}</score>
     <graph>{graph}</graph>
     <operator_description>{operator_description}</operator_description>
 </sample>
 
-Here are some sample question-answer pairs that this graph got correctly:
-{correct_qa}
+Additionally, here are some sample image-question-answer triples that this graph got correctly: {correct_qa}
 
-Here are some sample question-output-answer triples that this graph got wrong:
-{wrong_qa}
+Here are some sample image-question-output-answer quadruples where the graph produced wrong outputs: {wrong_qa}
 
 Below is a detailed log of a run with this graph that ended in wrong answer:
 {log}
 """
 
 WORKFLOW_OPTIMIZE_GUIDANCE="""
-First, provide optimization ideas. **Only one detail should be modified**, and **no more than 5 lines of code should be changed**—extensive modifications are strictly prohibited to maintain project focus!
+First, analyze the trace, brainstorm and provide optimization ideas. **Only one detail should be modified**, and **no more than 5 lines of code should be changed**—extensive modifications are strictly prohibited to maintain project focus!
 Sometimes it is a very good idea to shrink code and remove unnecessary steps. 
 When introducing new functionalities in the graph, please make sure to import the necessary libraries or modules yourself, except for operator, prompts, which have already been automatically imported.
 """
