@@ -40,8 +40,8 @@ def format_log(log):
 WORKFLOW_OPTIMIZE_PROMPT = """We are designing an agent that can answer vqa questions.  
 We need to implement function `run`, that takes in an image and a question and returns the answer.
 Please reconstruct and optimize the function. You can add, modify, or delete functions, parameters, or prompts. Include your 
-Ensure the code you provide is complete and correct, except for `custom` method, which is a convenient wrapper around a lmm call, taking in its args interleaved str and Image.Image and a pydantic model (`dna`) for output. When 
-optimizing, you can incorporate critical thinking methods like review, revise, ensemble (generating multiple answers through different/similar prompts, then voting/integrating/checking the majority to obtain a final answer), selfAsk, etc. Consider 
+Ensure the code you provide is complete and correct, except for `lmm` method, which is a convenient wrapper around a large multimodal model inference. `lmm` takes in any number of str or Image.Image args.
+When optimizing, you can incorporate critical thinking methods like review, revise, ensemble (generating multiple answers through different/similar prompts, then voting/integrating/checking the majority to obtain a final answer), selfAsk, etc. Consider 
 Python's loops (for, while, list comprehensions), conditional statements (if-elif-else, ternary operators), 
 or machine learning techniques (e.g., linear regression, decision trees, neural networks, clustering). The graph 
 complexity should not exceed 10. Use logical and control flow (IF-ELSE, loops) for a more enhanced graphical representation.
@@ -78,7 +78,8 @@ Here is a graph and the corresponding prompt that performed excellently in a pre
     <experience>{experience}</experience>
     <modification>(such as:add /delete /modify / ...)</modification>
     <score>{score}</score>
-    <agent>{agent}</agent>
+    <graph>{graph}</graph>
+    <operator_description>{operator_description}</operator_description>
 </sample>
 Below are the logs of some results with the aforementioned Graph that performed well but encountered errors, which can be used as references for optimization:
 
@@ -89,3 +90,6 @@ First, provide optimization ideas. **Only one detail should be modified**, and *
 Sometimes it is a very good idea to shrink code and remove unnecessary steps. 
 When introducing new functionalities in the graph, please make sure to import the necessary libraries or modules yourself, except for operator, prompts, which have already been automatically imported.
 """
+
+
+operator = 

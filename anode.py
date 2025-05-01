@@ -40,7 +40,7 @@ class LLM:
                     assert isinstance(stuff, Image.Image), prompt
                     content.append({"type": "image_url", "image_url": {"url": to_base64(stuff)}})
             messages.append({"role": "user", "content": content})
-        
+
         return self.client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -125,7 +125,7 @@ class ActionNode:
                     raw_value = match.group(1).strip()
                     extracted_data[field_name] = raw_value
         return extracted_data
-    
+
     def before_validator(self, result):
         types = self.pydantic_model.model_fields
         for k, v in result.items():

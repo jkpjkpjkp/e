@@ -47,7 +47,8 @@ class Graph(SQLModel, table=True):
 
     async def run(self, task):
         assert isinstance(task, dict)
-        assert task['id'] and task['image'] and task['answer'] and task['question']
+        assert task['id'] and task['image'] and task['answer']
+        # Question is now optional for image-only models
         with S(es) as session:
             ret = session.exec(
                 select(Run)
@@ -63,11 +64,11 @@ class Graph(SQLModel, table=True):
         }
 
         assert task['image']
-        assert task['question']
+        # Question may be optional depending on the model
         trace_log = []
         try:
             exec(self.graph, namespace)
-            run = namespace.get('run')                
+            run = namespace.get('run')
             def trace_calls(frame, event, arg):
                 if event == 'call':
                     func_name = frame.f_code.co_name
@@ -87,15 +88,22 @@ class Graph(SQLModel, table=True):
                 return None
 
             sys.settrace(trace_calls)
-            ret = run(task['image'], task['question'])
+            # Handle both image-only and image+question cases
+            if 'question' in task and task['question']:
+                ret = run(task['image'], task['question'])
+            else:
+                ret = run(task['image'])
             sys.settrace(None)
         except Exception as e:
             print(f'ERROR Graph.run: {e}')
+            # Create input tuple based on whether question is present
+            input_data = (task['image'],) if 'question' not in task or not task['question'] else (task['image'], task['question'])
+
             ret = Run(
                 graph_id=self.id,
                 task_id=task['id'],
                 log={
-                    'input': (task['image'], task['question']),
+                    'input': input_data,
                     'output': f'ERROR Graph.run: {e}',
                     'correct answer': task['answer'],
                     'tracelog': trace_log,
@@ -106,17 +114,20 @@ class Graph(SQLModel, table=True):
             with S(es) as session:
                 session.add(ret)
                 session.commit()
-            
+
             raise
-        
+
         score = loss(output=ret, answer=task['answer'])
-        
+
+        # Create input tuple based on whether question is present
+        input_data = (task['image'],) if 'question' not in task or not task['question'] else (task['image'], task['question'])
+
         ret = Run(
             graph_id=self.id,
             task_id=task['id'],
             output=ret,
             log={
-                'input': (task['image'], task['question']),
+                'input': input_data,
                 'output': ret,
                 'correct answer': task['answer'],
                 'tracelog': trace_log,
@@ -127,8 +138,24 @@ class Graph(SQLModel, table=True):
             session.expire_on_commit = False
             session.add(ret)
             session.commit()
-        
+
         return ret
+
+def find_and_convert(tp, f):
+    def convert(obj):
+        if isinstance(obj, tp):
+            return f(obj)
+        elif isinstance(obj, str):
+            return obj
+        elif isinstance(obj, list):
+            return [convert(x) for x in obj]
+        elif isinstance(obj, tuple):
+            return tuple(convert(x) for x in obj)
+        elif isinstance(obj, dict):
+            return {k: convert(v) for k, v in obj.items()}
+        else:
+            raise TypeError(type(obj))
+    return convert
 
 class Run(SQLModel, table=True):
     graph_id: int = Field(primary_key=True, foreign_key="graph.id")
@@ -145,43 +172,25 @@ class Run(SQLModel, table=True):
     @property
     def task(self):
         return get_task_by_id(self.task_id)
-    
+
     @property
     def log(self):
         def bytes_to_image(obj):
-            if isinstance(obj, str):
-                if obj.startswith('abragadoabragado'):
-                    return Image.open(BytesIO(base64.b64decode(obj[len('abragadoabragado'):])))
-                return obj
-            elif isinstance(obj, list):
-                return [bytes_to_image(x) for x in obj]
-            elif isinstance(obj, tuple):
-                return tuple(bytes_to_image(x) for x in obj)
-            elif isinstance(obj, dict):
-                return {k: bytes_to_image(v) for k, v in obj.items()}
-            else:
-                raise TypeError(type(obj))
-        return bytes_to_image(self.loglog)
+            assert isinstance(obj, str)
+            if obj.startswith('abragadoabragado'):
+                return Image.open(BytesIO(base64.b64decode(obj[len('abragadoabragado'):])))
+            return obj
+        return find_and_convert(str, bytes_to_image)(self.loglog)
+    
     @log.setter
     def log(self, value):
         def image_to_bytes(obj):
-            if isinstance(obj, Image.Image):
-                buffered = BytesIO()
-                obj.save(buffered, format="PNG")
-                return f'abragadoabragado{base64.b64encode(buffered.getvalue()).decode()}'
-            elif isinstance(obj, str):
-                return obj
-            elif isinstance(obj, list):
-                return [image_to_bytes(x) for x in obj]
-            elif isinstance(obj, tuple):
-                return tuple(image_to_bytes(x) for x in obj)
-            elif isinstance(obj, dict):
-                return {k: image_to_bytes(v) for k, v in obj.items()}
-            else:
-                assert issubclass(type(obj), BaseModel) or isinstance(obj, pydantic._internal._model_construction.ModelMetaclass)
-                return type(obj).__name__
-        self.loglog = image_to_bytes(value)
-    
+            assert isinstance(obj, Image.Image)
+            buffered = BytesIO()
+            obj.save(buffered, format="PNG")
+            return f'abragadoabragado{base64.b64encode(buffered.getvalue()).decode()}'
+        self.loglog = find_and_convert(Image.Image, image_to_bytes)(value)
+
 
 
 
@@ -262,7 +271,7 @@ async def main():
     for _ in range(100):
         if wins >= 5 or best_for >= 5:
             break
-        
+
         with S(es) as session:
             assert set(session.exec(
                 select(Run.graph_id).group_by(Run.graph_id)
@@ -283,7 +292,7 @@ async def main():
         else:
             strongest = graph,
             wins = 0
-        
+
         if graph.score >= best_score:
             best_score = graph.score
             best_for = 0
@@ -337,7 +346,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     with open(f"{args.dataset}.py", "r") as f:
         exec(f.read())
-    
+
     es = create_engine(f"sqlite:///{args.db_name}")
     SQLModel.metadata.create_all(es)
     asyncio.run(main())
