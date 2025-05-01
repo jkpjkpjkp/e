@@ -80,25 +80,37 @@ class Graph(SQLModel, table=True):
             '__package__': None,
         }
 
+        keywords = self.graph.split()
+        print(keywords)
         trace_log = []
         def trace_function_call(frame, event, arg):
+            if event not in ('call', 'return'):
+                return None
+            if frame.f_code.co_name not in keywords:
+                return None
             if event == 'call':
                 func_name = frame.f_code.co_name
-                args = frame.f_locals
+                # Copy only serializable args (bonus fix for potential serialization issues)
+                args = {k: v for k, v in frame.f_locals.items() if isinstance(v, (str, int, float, bool, list, dict))}
                 trace_log.append({
                     'type': 'call',
                     'func_name': func_name,
                     'args': args,
+                    'frame_id': id(frame)
                 })
                 return trace_function_call
             elif event == 'return':
                 func_name = frame.f_code.co_name
-                for i in range(len(trace_log) - 1, -1, -1):
+                for i in reversed(range(len(trace_log))):
                     call = trace_log[i]
-                    if call['func_name'] == func_name:
-                        trace_log[i]['return'] = arg
+                    if call['func_name'] == func_name and call.get('frame_id') == id(frame):
+                        trace_log[i]['return'] = arg if isinstance(arg, (str, int, float, bool, list, dict)) else str(arg)
                         break
+                else:
+                    print(f"No matching call found for {func_name} return")
+                return trace_function_call
             return None
+        
         try:
             exec(self.graph, namespace)
             run = namespace.get('run')
@@ -114,12 +126,7 @@ class Graph(SQLModel, table=True):
             ret = Run(
                 graph_id=self.id,
                 task_id=task['id'],
-                log={
-                    'input': input_data,
-                    'output': f'ERROR Graph.run: {e}',
-                    'correct answer': task['answer'],
-                    'tracelog': trace_log,
-                },
+                log='ERROR Graph.run: {e}',
                 output=f'ERROR Graph.run: {e}',
                 score=0,
             )
@@ -149,12 +156,7 @@ class Graph(SQLModel, table=True):
             graph_id=self.id,
             task_id=task['id'],
             output=ret,
-            log={
-                'input': input_data,
-                'output': ret,
-                'correct answer': task['answer'],
-                'tracelog': trace_log,
-            },
+            log=trace_log,
             score=score,
         )
         with S(es) as session:

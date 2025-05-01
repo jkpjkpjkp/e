@@ -12,8 +12,10 @@ def grounding_dino(image: Image.Image, objects: List[str], box_threshold=0.2, te
 def test_grounding_dino():
     from viswiz import get_all_task_ids, get_task_by_id
     task = get_task_by_id(get_all_task_ids()[0])
+    print(task['image'].width, task['image'].height)
+    task['image'].save('/data/a.png', format='PNG')
     bbox, img = grounding_dino(task['image'], task['answer'])
-    img.show()
+    img.save('/data/b.png', format='PNG')
 
 if __name__ == '__main__':
     test_grounding_dino()

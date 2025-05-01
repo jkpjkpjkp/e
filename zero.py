@@ -22,14 +22,15 @@ def get_task_by_id(id):
     row['question'] = row['question_text']
     row['answer'] = row['question_answer']
     row['id'] = id
-    row['loss'] = lambda x: loss(x, row['answer'])
+    row['loss'] = lambda x: loss(x, row['answer'], row['question'])
     return ret
 
-def llm_as_judge(expected_output, prediction):
+def llm_as_judge(expected_output, prediction, question):
     llm = LLM('deepseek-chat')
     
     prompt = f"""You are a judge evaluating the correctness of a prediction. Compare the prediction with the expected output.
 
+question: {question}
 correct answer: {expected_output}
 Prediction to be judged: {prediction}
 
@@ -43,5 +44,5 @@ Respond with only the numerical score (0 or 1)."""
         print(f"Error calculating score: {e}")
         return 0.0
 
-def loss(output, answer) -> float:
-    return llm_as_judge(expected_output=answer, prediction=output)
+def loss(output, answer, question) -> float:
+    return llm_as_judge(expected_output=answer, prediction=output, question=question)

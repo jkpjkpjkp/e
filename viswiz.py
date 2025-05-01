@@ -7,6 +7,9 @@ import random
 df = pl.read_parquet('/data/viswiz/val-0000*of-00005-*.parquet')
 df = df.filter(pl.col('category') != 'unanswerable')
 
+print(df.head())
+print(df.columns)
+
 def get_all_task_ids():
     return list(df['question_id'])
 
