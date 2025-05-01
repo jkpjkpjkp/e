@@ -140,8 +140,6 @@ class ActionNode:
                     v = v.replace(',', ' ').strip().split()
                     v = (x for x in v if x)
                 result[k] = tuple(inner_type(x) for x in v)
-            else:
-                assert(types[k].annotation == type(v))
         return result
 
     def fill(

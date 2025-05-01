@@ -9,7 +9,7 @@ def format_experience(graph):
         experience += f"-Absolutely prohibit {failure.modification} (Score: {failure.score})\n"
     for success in successes:
         experience += f"-Absolutely prohibit {success.modification} \n"
-    experience += "\n\nNote: Take into account past failures and avoid repeating the same mistakes. You must fundamentally change your way of thinking, rather than simply using more advanced Python syntax like for, if, else, etc., or modifying the prompt."
+    experience += "\n\nNote: Take into account past failures and avoid repeating the same mistakes. You must fundamentally change your way of thinking, rather than simply using more advanced Python syntax or modifying the prompt."
     return experience
 
 def format_lmm_io_log(log):
@@ -73,7 +73,7 @@ Output the modified code under same setting and function name (`run`).
 Complex agents may yield better results, but take into consideration llm's limited capabilities and potential information loss. It's crucial to include necessary context.
 
 
-Here is a graph and the corresponding prompt that performed excellently in a previous iteration. You must make further optimizations and improvements based on this graph. The modified graph must differ from the provided example, and the specific differences should be noted within the <modification>xxx</modification> section.\n
+Here is a graph that performed excellently in a previous iteration. You must make further optimizations and improvements based on this graph. The modified graph must differ from the provided example, and the specific differences should be noted within the <modification>xxx</modification> section.\n
 <sample>
     <experience>{experience}</experience>
     <modification>(such as:add /delete /modify / ...)</modification>
@@ -81,8 +81,15 @@ Here is a graph and the corresponding prompt that performed excellently in a pre
     <graph>{graph}</graph>
     <operator_description>{operator_description}</operator_description>
 </sample>
-Below are the logs of some results with the aforementioned Graph that performed well but encountered errors, which can be used as references for optimization:
 
+Here are some sample question-answer pairs that this graph got correctly:
+{correct_qa}
+
+Here are some sample question-output-answer triples that this graph got wrong:
+{wrong_qa}
+
+Below is a detailed log of a run with this graph that ended in wrong answer:
+{log}
 """
 
 WORKFLOW_OPTIMIZE_GUIDANCE="""
@@ -90,6 +97,3 @@ First, provide optimization ideas. **Only one detail should be modified**, and *
 Sometimes it is a very good idea to shrink code and remove unnecessary steps. 
 When introducing new functionalities in the graph, please make sure to import the necessary libraries or modules yourself, except for operator, prompts, which have already been automatically imported.
 """
-
-
-operator = 
