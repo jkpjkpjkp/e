@@ -7,7 +7,7 @@ from io import BytesIO
 from PIL import Image
 from loguru import logger
 from typing import get_args
-
+from util import *
 # Global variables for model names
 inference_model = None
 optimization_model = None
@@ -173,7 +173,22 @@ def custom(*args, dna=GenerateOp):
         assert x
     if len(args) == 1 and isinstance(args[0], (tuple, list)):
         args = args[0]
-    return ActionNode(dna).fill(context=args, llm=LLM(model=optimization_model))
+
+    # Convert string arguments to images if they contain image markers
+    processed_args = []
+    for arg in args:
+        if isinstance(arg, str):
+            oo = str_to_img(arg)
+            if isinstance(oo, (str, Image.Image)):
+                processed_args.append(oo)
+            else:
+                assert isinstance(oo, list)
+                processed_args.extend(oo)
+        else:
+            assert(isinstance(proessed_args, Image.Image))
+            processed_args.append(arg)
+
+    return ActionNode(dna).fill(context=processed_args, llm=LLM(model=optimization_model))
 
 def test_custom():
     print(custom('hi! '))
