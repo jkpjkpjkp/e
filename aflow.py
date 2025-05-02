@@ -58,6 +58,7 @@ class Graph(SQLModel, table=True):
 
     async def run(self, task):
         assert isinstance(task, dict)
+        # print(task)
         assert isinstance(task['image'], Image.Image)
         assert isinstance(task['question'], str)
         assert task['answer']
@@ -88,29 +89,62 @@ class Graph(SQLModel, table=True):
                 return None
             if frame.f_code.co_name not in keywords:
                 return None
+
             if event == 'call':
                 func_name = frame.f_code.co_name
-                # Copy only serializable args (bonus fix for potential serialization issues)
-                args = {k: v for k, v in frame.f_locals.items() if isinstance(v, (str, int, float, bool, list, dict))}
+                # Handle FrameLocalsProxy objects
+                try:
+                    # Copy only serializable args
+                    args = {}
+                    for k, v in frame.f_locals.items():
+                        if isinstance(v, (str, int, float, bool, list, dict)):
+                            args[k] = v
+                        elif hasattr(v, '__class__') and v.__class__.__name__ == 'FrameLocalsProxy':
+                            # Skip FrameLocalsProxy objects
+                            continue
+                        else:
+                            # For other complex objects, store their type information
+                            args[k] = f"<{type(v).__name__} object>"
+                except Exception as e:
+                    print(f"Error serializing args: {e}")
+                    args = {"error": f"Failed to serialize args: {str(e)}"}
+
                 trace_log.append({
-                    'type': 'call',
                     'func_name': func_name,
                     'args': args,
                     'frame_id': id(frame)
                 })
                 return trace_function_call
+
             elif event == 'return':
                 func_name = frame.f_code.co_name
                 for i in reversed(range(len(trace_log))):
                     call = trace_log[i]
                     if call['func_name'] == func_name and call.get('frame_id') == id(frame):
-                        trace_log[i]['return'] = arg if isinstance(arg, (str, int, float, bool, list, dict)) else str(arg)
+                        # Handle different return value types
+                        if isinstance(arg, (str, int, float, bool, list, dict)):
+                            trace_log[i]['return'] = arg
+                        elif hasattr(arg, 'model_dump') and callable(arg.model_dump):
+                            # Handle Pydantic models (like OpenAI API responses)
+                            try:
+                                trace_log[i]['return'] = f"<{type(arg).__name__}: {str(arg)}>"
+                            except:
+                                trace_log[i]['return'] = f"<{type(arg).__name__} object>"
+                        elif hasattr(arg, '__dict__'):
+                            # For objects with __dict__, create a simplified representation
+                            try:
+                                trace_log[i]['return'] = f"<{type(arg).__name__}: {str(arg)}>"
+                            except:
+                                trace_log[i]['return'] = f"<{type(arg).__name__} object>"
+                        else:
+                            # For other objects, just store their string representation
+                            trace_log[i]['return'] = str(arg)
                         break
                 else:
                     print(f"No matching call found for {func_name} return")
                 return trace_function_call
             return None
-        
+
         try:
             exec(self.graph, namespace)
             run = namespace.get('run')
@@ -256,15 +290,12 @@ def get_strongest_graph(k=1):
 
 def get_high_variance_task(k=1):
     ret = []
+    all_task_ids = get_all_task_ids()
     with S(es) as session:
         run_task_ids = session.exec(select(Run.task_id)).all()
-        print(f"Existing run_task_ids: {run_task_ids}")
-        all_task_ids = get_all_task_ids()
-        print(f"Total available task_ids: {len(all_task_ids)}")
         for task_id in all_task_ids:
             if task_id not in run_task_ids:
                 ret.append(task_id)
-    print(f"New tasks not yet run: {len(ret)}")
     ret = ret[:k]
     with S(es) as session:
         high_variance_tasks = session.exec(
@@ -275,10 +306,8 @@ def get_high_variance_task(k=1):
             ).desc())
             .limit(k - len(ret))
         ).all()
-        print(f"High variance tasks: {high_variance_tasks}")
         ret.extend(high_variance_tasks)
     ret = [get_task_by_id(id) for id in ret]
-    print(f"Selected tasks: {[task['id'] for task in ret]}")
     return ret[0] if k == 1 else ret
 
 def get_random_or_high_variance_task(k=1):
@@ -287,10 +316,8 @@ def get_random_or_high_variance_task(k=1):
         all_task_ids = get_all_task_ids()
         selected_ids = random.sample(all_task_ids, k)
         ret = [get_task_by_id(id) for id in selected_ids]
-        print(f"Randomly selected tasks: {[task['id'] for task in ret]}")
         return ret[0] if k == 1 else ret
     else:
-        print("Selecting high variance tasks")
         return get_high_variance_task(k)
 
 def get_correct_incorrect(runs):
