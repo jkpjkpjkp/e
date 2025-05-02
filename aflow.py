@@ -62,7 +62,7 @@ class Graph(SQLModel, table=True):
         assert isinstance(task['image'], Image.Image)
         assert isinstance(task['question'], str)
         assert task['answer']
-        assert task['id']
+        assert task['id'] is not None
 
         with S(es) as session:
             ret = session.exec(
@@ -180,16 +180,13 @@ class Graph(SQLModel, table=True):
 
             raise
 
-        score = task['loss'](ret)
-
-        # Create input tuple based on whether question is present
-        input_data = (task['image'],) if 'question' not in task or not task['question'] else (task['image'], task['question'])
+        score = task['score'](ret)
 
         print(trace_log)
         ret = Run(
             graph_id=self.id,
             task_id=task['id'],
-            output=ret,
+            output=str(ret),
             log=trace_log,
             score=score,
         )
@@ -330,6 +327,43 @@ def get_correct_incorrect(runs):
             incorrect.append(run)
     return correct, incorrect
 
+def optimize(graph):
+
+    class GraphOp(BaseModel):
+        plan: str = Field(description="Thoughts, analysis, of plan on how to improve the graph")
+        modification: str = Field(description="Briefly describe the modification made to the graph")
+        graph: str = Field(description="The graph (`run` function)")
+
+    with S(es) as session:
+        # First make sure the graph is attached to this session
+        graph = session.merge(graph)
+        correct_runs, wrong_runs = get_correct_incorrect(graph.runs)
+
+    ret = custom(
+        WORKFLOW_OPTIMIZE_PROMPT.format(
+            graph=graph.graph,
+            experience=format_experience(graph),
+            score=graph.score,
+            correct_qa='\n'.join(map(lambda x: f"question: {x.task['question']}, answer: {x.task['answer']} ", correct_runs[:5])),
+            wrong_qa='\n'.join(map(lambda x: f"question: {x.task['question']}, output(wrong): {x.output}, answer: {x.task['answer']} ", wrong_runs[:5])),
+            log=format_log(wrong_runs[-1].log),
+            operator_description=OPERATOR_DESCRIPTION,
+        ),
+        WORKFLOW_OPTIMIZE_GUIDANCE,
+        dna=GraphOp,
+    )
+
+    graph = Graph(
+        graph=ret.graph,
+        father=graph,
+        change=ret.modification,
+    )
+    return put(graph)
+
+def test_optimize():
+    graph = get_graph_from_a_file('seed1.py')
+    optimize(graph)
+
 
 async def main():
     global args
@@ -365,8 +399,10 @@ async def main():
 
         graph = get_strongest_graph()
         while True:
-            correct, incorrect = get_correct_incorrect(graph.runs)
-            print(f"Current runs: {len(graph.runs)}, Correct: {len(correct)}, Incorrect: {len(incorrect)}")
+            with S(es) as session:
+                graph = session.merge(graph)
+                correct, incorrect = get_correct_incorrect(graph.runs)
+                print(f"Current runs: {len(graph.runs)}, Correct: {len(correct)}, Incorrect: {len(incorrect)}")
             if min(len(correct), len(incorrect)) >= 5:
                 break
 
@@ -389,33 +425,6 @@ async def main():
         else:
             best_for += 1
 
-        class GraphOp(BaseModel):
-            plan: str = Field(description="Thoughts, analysis, of plan on how to improve the agent")
-            modification: str = Field(description="Briefly describe the modification made to the agent")
-            agent: str = Field(description="The agent code and prompts (`run` function)")
-
-        correct_runs, wrong_runs = get_correct_incorrect(graph.runs)
-
-        ret = custom(
-            WORKFLOW_OPTIMIZE_PROMPT.format(
-                agent=graph.graph,
-                experience=format_experience(graph),
-                score=graph.score,
-                correct_qa='\n'.join(map(lambda x: f"question: {x.task['question']}, answer: {x.task['answer']} ", correct_runs[:5])),
-                wrong_qa='\n'.join(map(lambda x: f"question: {x.task['question']}, output(wrong): {x.output}, answer: {x.task['answer']} ", wrong_runs[:5])),
-                log=format_log(wrong_runs[-1].log),
-                operator_description=OPERATOR_DESCRIPTION,
-            ),
-            WORKFLOW_OPTIMIZE_GUIDANCE,
-            dna=GraphOp,
-        )
-
-        graph = Graph(
-            graph=ret.agent,
-            father=graph,
-            change=ret.modification,
-        )
-        put(graph)
         tasks = get_high_variance_task(5)
         # Run final tasks for the new graph
         await asyncio.gather(*[graph.run(task) for task in tasks])
@@ -434,7 +443,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--db_name",
         type=str,
-        default="db.sqlite",
+        required=True,
         help="Optimized result save db",
     )
     parser.add_argument(
@@ -446,7 +455,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--inference_model",
         type=str,
-        default="qwen-vl-plus-latest",
+        default="qwen-vl-max-latest",
         help="Model to use for inference when calling lmm()",
     )
     parser.add_argument(
@@ -456,6 +465,10 @@ if __name__ == '__main__':
         help="Model to use for optimization",
     )
     args = parser.parse_args()
+    if args.inference_model == 'plus':
+        args.inference_model = 'qwen-vl-plus-latest'
+    elif args.inference_model == 'max':
+        args.inference_model = 'qwen-vl-max-latest'
     with open(f"{args.dataset}.py", "r") as f:
         exec(f.read())
 
@@ -466,4 +479,7 @@ if __name__ == '__main__':
 
     es = create_engine(f"sqlite:///{args.db_name}")
     SQLModel.metadata.create_all(es)
+
+    # test_optimize()
+    # exit()
     asyncio.run(main())

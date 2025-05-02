@@ -28,5 +28,5 @@ torch = [{index="pytorch-cu"}]
 torchvision = [{index="pytorch-cu"}]
 [[tool.uv.index]]
 name = "pytorch-cu"
-url = "https://download.pytorch.org/whl/cu124"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true

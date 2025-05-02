@@ -1,6 +1,5 @@
 import sqlite3
-
-db_path = 'db.sqlite'
+import argparse
 
 def print_schema(db_path):
     try:
@@ -28,7 +27,7 @@ def print_schema(db_path):
 
 def main():
     # Connect to the SQLite database
-    conn = sqlite3.connect('db.sqlite')
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
     # Check the number of graphs in the graph table
@@ -105,4 +104,9 @@ def main():
 
 
 if __name__ == "__main__":
+    global db_path
+    parser = argparse.ArgumentParser(description="Database Schema Printer")
+    parser.add_argument("--db_path", help="Path to the SQLite database file")
+    args = parser.parse_args()
+    db_path = args.db_path
     main()

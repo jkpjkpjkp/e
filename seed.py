@@ -27,7 +27,7 @@ def run(image: Image.Image, question: str = None, use_groundingdino: bool = Fals
     """
     if image.width * image.height > 1500 ** 2:
         image_copy = image.copy()
-        image_copy.thumbnail((1500, 1500))  # to avoid 'API Payload Too Large'
+        image_copy.thumbnail((1512, 1512))  # to avoid 'API Payload Too Large'
         image = image_copy
 
     # If GroundingDINO is requested, use it for object detection

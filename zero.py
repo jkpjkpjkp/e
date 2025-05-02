@@ -22,7 +22,7 @@ def get_task_by_id(id):
     row['question'] = row['question_text']
     row['answer'] = row['question_answer']
     row['id'] = id
-    row['loss'] = lambda x: loss(x, row['answer'], row['question'])
+    row['score'] = lambda x: loss(x, row['answer'], row['question'])
     row.pop('question_images_decoded')
     assert 'image' in row
     return row

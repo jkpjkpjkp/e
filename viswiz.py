@@ -19,7 +19,7 @@ def get_task_by_id(id):
     row['id'] = id
     row['answer'] = row['answers']
     row['image'] = Image.open(io.BytesIO(row['image']['bytes']))
-    row['loss'] = lambda x: loss(output=x, answer=row['answer'])
+    row['score'] = lambda x: loss(output=x, answer=row['answer'])
     return row
 
 

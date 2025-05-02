@@ -52,6 +52,8 @@ class LLM:
                     pass
                 else:
                     assert isinstance(stuff, Image.Image), prompt
+                    stuff.thumbnail((1512, 1512))
+                    assert min(stuff.height, stuff.width) > 11
                     content.append({"type": "image_url", "image_url": {"url": to_base64(stuff)}})
             messages.append({"role": "user", "content": content})
 
@@ -62,7 +64,16 @@ class LLM:
         ).choices[0].message.content
 
 def lmm(*args, **kwargs):
-    ret = LLM(model=inference_model).aask(prompt=args, **kwargs)
+    good_arg = [x if isinstance(x, str) else x.copy().convert('RGB') for x in args]
+    for x in good_arg:
+        if isinstance(x, Image.Image):
+            x.thumbnail((1512, 1512))
+            assert min(x.width, x.height) > 11
+    assert any(isinstance(x, Image.Image) for x in good_arg), good_arg
+    for x in good_arg:
+        if isinstance(x, Image.Image):
+            assert x.width * x.height <= 1500 ** 2, x.size
+    ret = LLM(model=inference_model).aask(prompt=good_arg, **kwargs)
     return ret
 
 class ActionNode:

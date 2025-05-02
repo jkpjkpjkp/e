@@ -38,7 +38,7 @@ def format_log(log):
     return ret
 
 WORKFLOW_OPTIMIZE_PROMPT = """We are designing an agent that can answer visual question answering (VQA) questions.
-We need to implement the function run, which takes in an image and a question and returns the answer. Please reconstruct and optimize the function. You can add, modify, or delete functions, parameters, or prompts. Ensure the code you provide is complete and correct, except for the lmm method, which is a convenient wrapper around a large multimodal model inference. The lmm method takes in any number of str or Image.Image args.
+We need to implement the function run, which takes in an image and a question and returns the answer. Please reconstruct and optimize the function. You can add, modify, or delete functions, parameters, or prompts. Ensure the code you provide is complete and correct, including necessary imports, except for the lmm method, which is a convenient wrapper around a large multimodal model inference. The lmm method takes in any number of str or Image.Image args.
 
 When optimizing, you can incorporate critical thinking methods like review, revise, ensemble (generating multiple answers through different/similar prompts, then voting/integrating/checking the majority to obtain a final answer), selfAsk, etc. Consider using Python's loops (for, while, list comprehensions), conditional statements (if-elif-else, ternary operators), or machine learning techniques (e.g., linear regression, decision trees, neural networks, clustering). The graph complexity should not exceed 10. Use logical and control flow (IF-ELSE, loops) for a more enhanced graphical representation.
 
