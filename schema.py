@@ -83,7 +83,7 @@ def main():
         
         if total_runs > 0:
             # Calculate win rate (percentage of runs with nonzero scores)
-            cursor.execute("SELECT COUNT(*) FROM run WHERE score != 0")
+            cursor.execute("SELECT COUNT(*) FROM run WHERE score >= 0.5")
             num_wins = cursor.fetchone()[0]
             win_rate = (num_wins / total_runs) * 100
             print(f"Run win rate: {win_rate:.2f}%")

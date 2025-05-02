@@ -7,6 +7,7 @@ def get_all_task_ids():
     return list(range(len(df)))
 
 def get_task_by_id(id):
+    id = int(id)
     ret = df[id].to_dict()
     ret['image'] = Image.open(ret['image_path'][0])
     ret['question'] = f"Please outout a large bounding box containing all {ret['label'][0]}s in the image. "

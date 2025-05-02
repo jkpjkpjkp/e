@@ -16,6 +16,7 @@ import random
 import os
 from util import *
 from tqdm import tqdm
+import time
 
 image_cache_dir = '/data/image_cache'
 
@@ -41,6 +42,7 @@ class Graph(SQLModel, table=True):
     @property
     def children(self):
         with S(es) as session:
+            session.expire_on_commit = False
             return session.exec(
                 select(Graph)
                 .where(Graph.father_id == self.id)
@@ -49,6 +51,7 @@ class Graph(SQLModel, table=True):
     @property
     def score(self) -> float:
         with S(es) as session:
+            session.expire_on_commit = False
             return (lambda x: sum(x) / len(x))(
                 session.exec(
                     select(Run.score)
@@ -58,31 +61,31 @@ class Graph(SQLModel, table=True):
 
     async def run(self, task):
         assert isinstance(task, dict)
-        # print(task)
         assert isinstance(task['image'], Image.Image)
         assert isinstance(task['question'], str)
         assert task['answer']
         assert task['id'] is not None
 
+        graph_id = self.id
+
         with S(es) as session:
+            session.expire_on_commit = False
             ret = session.exec(
                 select(Run)
-                .where(Run.graph_id == self.id)
+                .where(Run.graph_id == graph_id)
                 .where(Run.task_id == task['id'])
             ).first()
             if ret:
-                print(f"Cache hit for graph_id={self.id}, task_id={task['id']}")
+                print(f"Cache hit for graph_id={graph_id}, task_id={task['id']}")
                 return ret
             else:
-                print(f"Cache miss for graph_id={self.id}, task_id={task['id']} - creating new run")
+                print(f"Cache miss for graph_id={graph_id}, task_id={task['id']} - creating new run")
 
         namespace = {
             '__name__': '__exec__',
             '__package__': None,
         }
-
-        keywords = self.graph.split()
-        print(keywords)
+        keywords = ['lmm']
         trace_log = []
         def trace_function_call(frame, event, arg):
             if event not in ('call', 'return'):
@@ -92,7 +95,10 @@ class Graph(SQLModel, table=True):
 
             if event == 'call':
                 func_name = frame.f_code.co_name
-                # Handle FrameLocalsProxy objects
+                # Skip repetitive match calls to reduce noise
+                if func_name == 'match' and len(trace_log) > 0 and trace_log[-1].get('func_name') == 'match':
+                    return trace_function_call
+                
                 try:
                     # Copy only serializable args
                     args = {}
@@ -165,6 +171,7 @@ class Graph(SQLModel, table=True):
                 score=0,
             )
             with S(es) as session:
+                session.expire_on_commit = False
                 session.add(ret)
                 try:
                     session.flush()  # Flush explicitly to catch the error before commit
@@ -192,6 +199,7 @@ class Graph(SQLModel, table=True):
         )
         with S(es) as session:
             session.expire_on_commit = False
+            session.expire_on_commit = False
             session.add(ret)
             try:
                 session.flush()  # Flush explicitly to catch the error before commit
@@ -211,7 +219,7 @@ class Run(SQLModel, table=True):
     graph_id: int = Field(primary_key=True, foreign_key="graph.id")
     task_id: str = Field(primary_key=True)
     loglog: List[Dict[str, Any]] = Field(sa_column=Column(JSON))
-    output: str
+    output: str  # = Field(sa_column=Column(JSON))
     score: float
     graph: Graph = Relationship(back_populates="runs")
 
@@ -234,6 +242,7 @@ class Run(SQLModel, table=True):
 
 def put(x):
     with S(es) as session:
+        session.expire_on_commit = False
         session.add(x)
         try:
             session.flush()  # Flush explicitly to catch the error before commit
@@ -253,6 +262,7 @@ def get_graph_from_a_file(path: str):
         graph = f.read()
     graph = Graph(graph=graph)
     with S(es) as session:
+        session.expire_on_commit = False
         existing = session.exec(select(Graph).where(Graph.graph == graph.graph)).first()
         if existing:
             return existing
@@ -274,6 +284,7 @@ def get_graph_from_a_file(path: str):
 
 def get_strongest_graph(k=1):
     with S(es) as session:
+        session.expire_on_commit = False
         stmt_with_runs = (
             select(Graph)
             .join(Run)
@@ -289,12 +300,14 @@ def get_high_variance_task(k=1):
     ret = []
     all_task_ids = get_all_task_ids()
     with S(es) as session:
+        session.expire_on_commit = False
         run_task_ids = session.exec(select(Run.task_id)).all()
         for task_id in all_task_ids:
             if task_id not in run_task_ids:
                 ret.append(task_id)
     ret = ret[:k]
     with S(es) as session:
+        session.expire_on_commit = False
         high_variance_tasks = session.exec(
             select(Run.task_id).
             group_by(Run.task_id).
@@ -308,7 +321,7 @@ def get_high_variance_task(k=1):
     return ret[0] if k == 1 else ret
 
 def get_random_or_high_variance_task(k=1):
-    if random.random() < 0.1:
+    if random.random() < 0.5:
         print("Selecting random tasks")
         all_task_ids = get_all_task_ids()
         selected_ids = random.sample(all_task_ids, k)
@@ -321,7 +334,7 @@ def get_correct_incorrect(runs):
     correct = []
     incorrect = []
     for run in runs:
-        if run.score > 0.9:
+        if run.score > 0.5:
             correct.append(run)
         else:
             incorrect.append(run)
@@ -335,7 +348,7 @@ def optimize(graph):
         graph: str = Field(description="The graph (`run` function)")
 
     with S(es) as session:
-        # First make sure the graph is attached to this session
+        session.expire_on_commit = False
         graph = session.merge(graph)
         correct_runs, wrong_runs = get_correct_incorrect(graph.runs)
 
@@ -344,8 +357,8 @@ def optimize(graph):
             graph=graph.graph,
             experience=format_experience(graph),
             score=graph.score,
-            correct_qa='\n'.join(map(lambda x: f"question: {x.task['question']}, answer: {x.task['answer']} ", correct_runs[:5])),
-            wrong_qa='\n'.join(map(lambda x: f"question: {x.task['question']}, output(wrong): {x.output}, answer: {x.task['answer']} ", wrong_runs[:5])),
+            correct_qa='\n'.join(map(lambda run: f"question: {run.task['question']}, answer: {run.task['answer']} ", correct_runs[:5])),
+            wrong_qa='\n'.join(map(lambda run: f"question: {run.task['question']}, output(wrong): {run.output}, answer: {run.task['answer']} ", wrong_runs[:5])),
             log=format_log(wrong_runs[-1].log),
             operator_description=OPERATOR_DESCRIPTION,
         ),
@@ -369,22 +382,25 @@ async def main():
     global args
 
     graph = get_graph_from_a_file(args.seed_file)
-    await graph.run(get_high_variance_task())
+    await graph.run(get_random_or_high_variance_task())
 
     strongest = None
     wins = 0
     best_score = -10000
     best_for = 0
 
-    graphs = get_strongest_graph(100)
-    # Run initial tasks for each graph
-    await asyncio.gather(*[graph.run(get_random_or_high_variance_task()) for graph in graphs])
-
+    with S(es) as session:
+        session.expire_on_commit = False
+        all_graphs = session.exec(select(Graph)).all()
+    await asyncio.gather(*[graph.run(get_random_or_high_variance_task()) for graph in all_graphs])
+    import time
+    time.sleep(4)
     for _ in tqdm(range(100)):
         if wins >= 5 or best_for >= 5:
             break
 
         with S(es) as session:
+            session.expire_on_commit = False
             assert set(session.exec(
                 select(Run.graph_id).group_by(Run.graph_id)
             ).all()) == set(
@@ -393,13 +409,14 @@ async def main():
             ).all())
 
         graphs = get_strongest_graph(3)
-        tasks = get_high_variance_task(5)
+        tasks = get_random_or_high_variance_task(5)
         # Run tasks for each graph
         await asyncio.gather(*[graph.run(task) for graph in graphs for task in tasks])
 
         graph = get_strongest_graph()
         while True:
             with S(es) as session:
+                session.expire_on_commit = False
                 graph = session.merge(graph)
                 correct, incorrect = get_correct_incorrect(graph.runs)
                 print(f"Current runs: {len(graph.runs)}, Correct: {len(correct)}, Incorrect: {len(incorrect)}")
@@ -411,6 +428,8 @@ async def main():
             tasks = get_random_or_high_variance_task(5)
             print(f"Running additional tasks: {[task['id'] for task in tasks]}")
             await asyncio.gather(*[graph.run(task) for task in tasks])
+            import time
+            time.sleep(1)
 
 
         if graph == strongest:
@@ -425,6 +444,7 @@ async def main():
         else:
             best_for += 1
 
+        graph = optimize(graph)
         tasks = get_high_variance_task(5)
         # Run final tasks for the new graph
         await asyncio.gather(*[graph.run(task) for task in tasks])
@@ -449,7 +469,7 @@ if __name__ == '__main__':
     parser.add_argument(
         "--seed_file",
         type=str,
-        default="seed1.py",
+        required=True,
         help="initial graph python file",
     )
     parser.add_argument(
