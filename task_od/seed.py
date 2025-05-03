@@ -55,12 +55,31 @@ def run(image: Image.Image, labels: List[str]) -> List[Bbox]:
     owl_threshold = 0.1
     dino_box_threshold = 0.2
     dino_text_threshold = 0.1
+
+    # Get detections from both models
     dino_detections = grounding_dino(image, labels, box_threshold=dino_box_threshold, text_threshold=dino_text_threshold)[0]
-    assert dino_detections
     owl_detections = owl_v2(image, labels, threshold=owl_threshold)[0]
+
+    # If no detections from Dino, return owl detections
+    if not dino_detections:
+        print("No detections from Grounding DINO, using OWL detections only")
+        return owl_detections
+
+    # Process Dino detections
     trimmed_dino_detections = trim_result(dino_detections)
 
+    # If no detections from OWL, return trimmed Dino detections
+    if not owl_detections:
+        print("No detections from OWL, using Grounding DINO detections only")
+        return trimmed_dino_detections
+
+    # Filter Dino detections based on OWL labels
     owl_labels = {x['label'] for x in owl_detections}
     filtered_detections = [x for x in trimmed_dino_detections if x['label'] in owl_labels]
+
+    # If no filtered detections, return the combined results from both models
+    if not filtered_detections:
+        print("No overlapping detections, returning combined results")
+        return trimmed_dino_detections + owl_detections
 
     return filtered_detections
