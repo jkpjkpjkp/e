@@ -1,6 +1,6 @@
 from aflow import get_graph_from_a_file, set_es
 from sqlmodel import Field, Relationship, SQLModel, create_engine, Session as S, select
-from viswiz import get_a_random_task
+from data.vizwiz import get_a_random_task
 import asyncio
 from anode import set_inference_model
 

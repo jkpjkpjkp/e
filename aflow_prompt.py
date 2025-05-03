@@ -68,23 +68,47 @@ it is encouraged that you use cropping on the image to focus on important area.
 you can prompt the lmm to return specific xml fields, and use `re` to parse it. this way you can get typed return fields, for example x y x y bounding box for cropping or highlighting or analysis. 
 """
 
-OPERATOR_="{id}. {operator_name}: {desc}, with interface {interface}). \n"
+OPERATOR_="{id}. {operator_name}: {desc}, with interface {interface}. \n"
 
-OPERATOR_DESCRIPTION = (
-    OPERATOR_.format(
-        id=1,
-        operator_name="lmm",
-        desc="a convenient wrapper around a large multimodal model api call",
-        interface="lmm(*args: tuple[str | Image.Image]) -> str ",
-    ) + OPERATOR_.format(
-        id=2,
-        operator_name="grounding_dino",
-        desc="GroundingDINO object detection model",
-        interface="""grounding_dino(image: Image.Image, objects: List[str], box_threshold=0.2, text_threshold=0.15) -> (List[Bbox], Image.Image), where Bbox is 
-`class Bbox(TypedDict):
-    box: List[float] # [x1, y1, x2, y2]
-    score: float
-    label: str`
-and Image is the image with bbox and labels drawn""",
-    )
-)
+def format_operators(tools):
+    ret = ""
+    for i, tool in enumerate(tools):
+        ret += OPERATOR_.format(
+            id=i+1,
+            operator_name=tool['name'],
+            desc=tool['description'],
+            interface=(
+                f"{tool['name']}("
+                + ", ".join(
+                    f"{k}: {v['type']}"
+                    for k, v in tool['parameters']['properties'].items()
+                )
+                + ") -> "
+                + tool['callable'].__annotations__['return']
+            )
+        )
+    return ret
+
+def test_format_operators():
+    from task_od.gd import tools
+    ret = format_operators(tools)
+    print(ret)
+
+# OPERATOR_DESCRIPTION = (
+#     OPERATOR_.format(
+#         id=1,
+#         operator_name="lmm",
+#         desc="a convenient wrapper around a large multimodal model api call",
+#         interface="lmm(*args: tuple[str | Image.Image]) -> str ",
+#     ) + OPERATOR_.format(
+#         id=2,
+#         operator_name="grounding_dino",
+#         desc="GroundingDINO object detection model",
+#         interface="""grounding_dino(image: Image.Image, objects: List[str], box_threshold=0.2, text_threshold=0.15) -> (List[Bbox], Image.Image), where Bbox is 
+# `class Bbox(TypedDict):
+#     box: List[float] # [x1, y1, x2, y2]
+#     score: float
+#     label: str`
+# and Image is the image with bbox and labels drawn""",
+#     )
+# )

@@ -95,21 +95,14 @@ class Graph(SQLModel, table=True):
 
             if event == 'call':
                 func_name = frame.f_code.co_name
-                # Skip repetitive match calls to reduce noise
-                if func_name == 'match' and len(trace_log) > 0 and trace_log[-1].get('func_name') == 'match':
-                    return trace_function_call
-                
                 try:
-                    # Copy only serializable args
                     args = {}
                     for k, v in frame.f_locals.items():
                         if isinstance(v, (str, int, float, bool, list, dict)):
                             args[k] = v
                         elif hasattr(v, '__class__') and v.__class__.__name__ == 'FrameLocalsProxy':
-                            # Skip FrameLocalsProxy objects
                             continue
                         else:
-                            # For other complex objects, store their type information
                             args[k] = f"<{type(v).__name__} object>"
                 except Exception as e:
                     print(f"Error serializing args: {e}")
@@ -173,16 +166,6 @@ class Graph(SQLModel, table=True):
             with S(es) as session:
                 session.expire_on_commit = False
                 session.add(ret)
-                try:
-                    session.flush()  # Flush explicitly to catch the error before commit
-                except Exception as e:
-                    print("Error during flush. Inspecting new objects:")
-                    for obj in session.new:  # New objects to be inserted
-                        print(f"Object: {obj}")
-                        for attr, value in obj.__dict__.items():
-                            if attr != '_sa_instance_state':  # Ignore SQLAlchemy internal state
-                                print(f"  {attr}: Type={type(value)}, Value={value}")
-                    raise
                 session.commit()
 
             raise
@@ -201,16 +184,6 @@ class Graph(SQLModel, table=True):
             session.expire_on_commit = False
             session.expire_on_commit = False
             session.add(ret)
-            try:
-                session.flush()  # Flush explicitly to catch the error before commit
-            except Exception as e:
-                print("Error during flush. Inspecting new objects:")
-                for obj in session.new:  # New objects to be inserted
-                    print(f"Object: {obj}")
-                    for attr, value in obj.__dict__.items():
-                        if attr != '_sa_instance_state':  # Ignore SQLAlchemy internal state
-                            print(f"  {attr}: Type={type(value)}, Value={value}")
-                raise
             session.commit()
 
         return ret
@@ -244,16 +217,6 @@ def put(x):
     with S(es) as session:
         session.expire_on_commit = False
         session.add(x)
-        try:
-            session.flush()  # Flush explicitly to catch the error before commit
-        except Exception as e:
-            print("Error during flush. Inspecting new objects:")
-            for obj in session.new:  # New objects to be inserted
-                print(f"Object: {obj}")
-                for attr, value in obj.__dict__.items():
-                    if attr != '_sa_instance_state':  # Ignore SQLAlchemy internal state
-                        print(f"  {attr}: Type={type(value)}, Value={value}")
-            raise
         session.commit()
         return x
 
@@ -267,16 +230,6 @@ def get_graph_from_a_file(path: str):
         if existing:
             return existing
         session.add(graph)
-        try:
-            session.flush()  # Flush explicitly to catch the error before commit
-        except Exception as e:
-            print("Error during flush. Inspecting new objects:")
-            for obj in session.new:  # New objects to be inserted
-                print(f"Object: {obj}")
-                for attr, value in obj.__dict__.items():
-                    if attr != '_sa_instance_state':  # Ignore SQLAlchemy internal state
-                        print(f"  {attr}: Type={type(value)}, Value={value}")
-            raise
         session.commit()
         session.refresh(graph)
     return graph
@@ -456,7 +409,6 @@ if __name__ == '__main__':
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=['zero', 'counts', 'viswiz'],
         required=True,
         help="Dataset type",
     )
@@ -475,13 +427,13 @@ if __name__ == '__main__':
     parser.add_argument(
         "--inference_model",
         type=str,
-        default="qwen-vl-max-latest",
+        default="max",
         help="Model to use for inference when calling lmm()",
     )
     parser.add_argument(
         "--optimization_model",
         type=str,
-        default="qwen-vl-max-latest",
+        default="max",
         help="Model to use for optimization",
     )
     args = parser.parse_args()
@@ -489,10 +441,10 @@ if __name__ == '__main__':
         args.inference_model = 'qwen-vl-plus-latest'
     elif args.inference_model == 'max':
         args.inference_model = 'qwen-vl-max-latest'
+    
     with open(f"{args.dataset}.py", "r") as f:
         exec(f.read())
 
-    # Set global variables for models using the setter functions from anode
     from anode import set_inference_model, set_optimization_model
     set_inference_model(args.inference_model)
     set_optimization_model(args.optimization_model)
@@ -500,6 +452,5 @@ if __name__ == '__main__':
     es = create_engine(f"sqlite:///{args.db_name}")
     SQLModel.metadata.create_all(es)
 
-    # test_optimize()
-    # exit()
+
     asyncio.run(main())
