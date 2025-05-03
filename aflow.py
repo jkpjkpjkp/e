@@ -18,6 +18,8 @@ from tqdm import tqdm
 import time
 from db import *
 import importlib.util
+from florence import G_Dino
+from typing import List, Dict, Any
 
 optimize = None
 def set_optimize(new_optimize):
@@ -118,6 +120,28 @@ def test_optimize(args):
     # Skip optimization test for now
     print("Skipping optimization test")
     pass
+
+def g_dino_detect(image, objects, box_threshold=0.3):
+    """
+    Detect objects in an image using the G_Dino model.
+
+    Args:
+        image: Input image (PIL.Image) or path to image
+        objects: List of object labels to detect
+        box_threshold: Confidence threshold for detections
+
+    Returns:
+        List of detection dictionaries with box, score, and label
+    """
+    from PIL import Image
+    from florence import G_Dino
+
+    if isinstance(image, str):
+        image = Image.open(image)
+
+    g_dino = G_Dino()
+    detections = g_dino.detect(image, objects, box_threshold=box_threshold)
+    return detections
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="AFlow Optimizer")

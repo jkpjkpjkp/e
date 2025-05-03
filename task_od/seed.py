@@ -1,11 +1,12 @@
 import torch
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from PIL import Image
 import PIL.Image
 import requests
 import base64
 from io import BytesIO
 from od import grounding_dino, owl_v2, Bbox
+from florence import G_Dino
 
 def box_trim(detections: List[Bbox]) -> List[Bbox]:
     """Trim overlapping detections based on occlusion threshold."""
@@ -56,30 +57,33 @@ def run(image: Image.Image, labels: List[str]) -> List[Bbox]:
     dino_box_threshold = 0.2
     dino_text_threshold = 0.1
 
-    # Get detections from both models
-    dino_detections = grounding_dino(image, labels, box_threshold=dino_box_threshold, text_threshold=dino_text_threshold)[0]
+    # Get detections from G_Dino
+    g_dino = G_Dino()
+    g_dino_detections = g_dino.detect(image, labels, box_threshold=dino_box_threshold)
+
+    # Get detections from OWL
     owl_detections = owl_v2(image, labels, threshold=owl_threshold)[0]
 
-    # If no detections from Dino, return owl detections
-    if not dino_detections:
-        print("No detections from Grounding DINO, using OWL detections only")
+    # If no detections from G_Dino, return owl detections
+    if not g_dino_detections:
+        print("No detections from G_Dino, using OWL detections only")
         return owl_detections
 
-    # Process Dino detections
-    trimmed_dino_detections = trim_result(dino_detections)
+    # Process G_Dino detections
+    trimmed_g_dino_detections = trim_result(g_dino_detections)
 
-    # If no detections from OWL, return trimmed Dino detections
+    # If no detections from OWL, return trimmed G_Dino detections
     if not owl_detections:
-        print("No detections from OWL, using Grounding DINO detections only")
-        return trimmed_dino_detections
+        print("No detections from OWL, using G_Dino detections only")
+        return trimmed_g_dino_detections
 
-    # Filter Dino detections based on OWL labels
+    # Filter G_Dino detections based on OWL labels
     owl_labels = {x['label'] for x in owl_detections}
-    filtered_detections = [x for x in trimmed_dino_detections if x['label'] in owl_labels]
+    filtered_detections = [x for x in trimmed_g_dino_detections if x['label'] in owl_labels]
 
     # If no filtered detections, return the combined results from both models
     if not filtered_detections:
         print("No overlapping detections, returning combined results")
-        return trimmed_dino_detections + owl_detections
+        return trimmed_g_dino_detections + owl_detections
 
     return filtered_detections
