@@ -71,7 +71,7 @@ class Graph(SQLModel, table=True):
     async def run(self, task):
         assert isinstance(task, dict)
         assert isinstance(task['image'], Image.Image)
-        assert isinstance(task['question'], str)
+        assert task['question']
         assert task['answer']
         assert task['id'] is not None
 
@@ -104,18 +104,14 @@ class Graph(SQLModel, table=True):
 
             if event == 'call':
                 func_name = frame.f_code.co_name
-                try:
-                    args = {}
-                    for k, v in frame.f_locals.items():
-                        if isinstance(v, (str, int, float, bool, list, dict)):
-                            args[k] = v
-                        elif hasattr(v, '__class__') and v.__class__.__name__ == 'FrameLocalsProxy':
-                            continue
-                        else:
-                            args[k] = f"<{type(v).__name__} object>"
-                except Exception as e:
-                    print(f"Error serializing args: {e}")
-                    args = {"error": f"Failed to serialize args: {str(e)}"}
+                args = {}
+                for k, v in frame.f_locals.items():
+                    if isinstance(v, (str, int, float, bool, list, dict)):
+                        args[k] = v
+                    elif hasattr(v, '__class__') and v.__class__.__name__ == 'FrameLocalsProxy':
+                        continue
+                    else:
+                        args[k] = f"<{type(v).__name__} object>"
 
                 trace_log.append({
                     'func_name': func_name,
@@ -149,31 +145,12 @@ class Graph(SQLModel, table=True):
                 return trace_function_call
             return None
 
-        try:
-            exec(self.graph, namespace)
-            run = namespace.get('run')
+        exec(self.graph, namespace)
+        run = namespace.get('run')
 
-            sys.settrace(trace_function_call)
-            ret = run(task['image'], task['question'])
-            sys.settrace(None)
-        except Exception as e:
-            print(f'ERROR Graph.run: {e}')
-            # Create input tuple based on whether question is present
-            input_data = (task['image'],) if 'question' not in task or not task['question'] else (task['image'], task['question'])
-
-            ret = Run(
-                graph_id=self.id,
-                task_id=task['id'],
-                log='ERROR Graph.run: {e}',
-                output=f'ERROR Graph.run: {e}',
-                score=0,
-            )
-            with S(es) as session:
-                session.expire_on_commit = False
-                session.add(ret)
-                session.commit()
-
-            raise
+        sys.settrace(trace_function_call)
+        ret = run(task['image'], task['question'])
+        sys.settrace(None)
 
         score = task['score'](ret)
 
@@ -278,15 +255,17 @@ def get_high_variance_task(k=1):
     ret = [get_task_by_id(id) for id in ret]
     return ret[0] if k == 1 else ret
 
+
+def get_random_task(k=1):
+    all_task_ids = get_all_task_ids()
+    selected_ids = random.sample(all_task_ids, k)
+    ret = [get_task_by_id(id) for id in selected_ids]
+    return ret[0] if k == 1 else ret
+
 def get_random_or_high_variance_task(k=1):
     if random.random() < 0.5:
-        print("Selecting random tasks")
-        all_task_ids = get_all_task_ids()
-        selected_ids = random.sample(all_task_ids, k)
-        ret = [get_task_by_id(id) for id in selected_ids]
-        return ret[0] if k == 1 else ret
+        return get_random_task(k)
     else:
         return get_high_variance_task(k)
-
 
 

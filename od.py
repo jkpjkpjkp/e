@@ -17,28 +17,37 @@ class Bbox(TypedDict):
     label: str
 
 class Dino:
-    def __init__(self, max_parallel=1):
-        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    def __init__(self, max_parallel=3):
+        assert torch.cuda.is_available()
+        self.device = 'cuda'
         self.gd_processor = AutoProcessor.from_pretrained('IDEA-Research/grounding-dino-base')
         self.gd_model = AutoModelForZeroShotObjectDetection.from_pretrained('IDEA-Research/grounding-dino-base')
         self.semaphore = threading.Semaphore(max_parallel)
 
     def _run(self, image: Image.Image, texts: List[str], box_threshold=0.2, text_threshold=0.1) -> List[Bbox]:
         """Detect objects in an image using Grounding DINO with concurrency control."""
-        if not texts or not image:
-            raise ValueError('Valid image and at least one text description required')
-
         with self.semaphore:
             image = image.convert('RGB')
             text = '. '.join(text.strip().lower() for text in texts) + '.'
+            print("GD: ", text, image)
             inputs = self.gd_processor(images=image, text=text, return_tensors='pt').to(self.device)
             self.gd_model.to(self.device)
+
             with torch.no_grad():
                 outputs = self.gd_model(**inputs)
-            results = self.gd_processor.post_process_grounded_object_detection(
-                outputs, inputs['input_ids'], box_threshold=box_threshold,
-                text_threshold=text_threshold, target_sizes=[image.size[::-1]]
-            )[0]
+                # Move outputs to CPU
+                outputs = {k: v.to('cpu') for k, v in outputs.items()}
+                # Move input_ids to CPU
+                input_ids = inputs['input_ids'].to('cpu')
+                results = self.gd_processor.post_process_grounded_object_detection(
+                    outputs, input_ids, box_threshold=box_threshold,
+                    text_threshold=text_threshold, target_sizes=[image.size[::-1]]
+                )[0]
+            assert outputs
+            # results = self.gd_processor.post_process_grounded_object_detection(
+            #     outputs, inputs['input_ids'], box_threshold=box_threshold,
+            #     text_threshold=text_threshold, target_sizes=[image.size[::-1]]
+            # )[0]
             return [Bbox(box=box.tolist(), score=score.item(), label=label)
                     for box, score, label in zip(results['boxes'], results['scores'], results['labels'])]
 
@@ -58,6 +67,11 @@ def grounding_dino(image: Image.Image, objects: List[str], box_threshold=0.2, te
             image with bbox drawn,
         )
     """
+    assert isinstance(image, Image.Image)
+    assert isinstance(objects, list)
+    assert all(isinstance(x, str) for x in objects)
+    assert 0 <= box_threshold <= 1
+    assert 0 <= text_threshold <= 1
     image = image.convert('RGB')
     detections = dino._run(image, objects, box_threshold, text_threshold)
     drawn_image = plot_bounding_boxes(image.copy(), detections)
@@ -131,7 +145,7 @@ def format_detections(detections: List[Bbox]) -> str:
     )
 
 class Owl:
-    def __init__(self, max_parallel=1):
+    def __init__(self, max_parallel=3):
         self.device = 'cuda'
         self.processor = Owlv2Processor.from_pretrained("google/owlv2-large-patch14-ensemble")
         self.model = Owlv2ForObjectDetection.from_pretrained("google/owlv2-large-patch14-ensemble").to(self.device).half()
@@ -171,113 +185,117 @@ def owl_v2(image: Image.Image, objects: List[str], threshold=0.1) -> Tuple[List[
             image with bbox drawn,
         )
     """
+    assert isinstance(image, Image.Image)
+    assert isinstance(objects, list)
+    assert all(isinstance(x, str) for x in objects), objects
+    assert 0 <= threshold <= 1, threshold
     image = image.convert('RGB')
     detections = owl._run(image, objects, threshold)
     drawn_image = plot_bounding_boxes(image.copy(), detections)
     return detections, drawn_image
 
-class Florence:
-    def __init__(self, max_parallel: int = 1):
-        self.device = 'cuda'
-        self.torch_dtype = torch.float16
-        from transformers import AutoModelForCausalLM
-        # self.model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large", trust_remote_code=True)
-        self.model = AutoModelForCausalLM.from_pretrained(
-            "microsoft/Florence-2-large",
-            torch_dtype=self.torch_dtype,
-            trust_remote_code=True
-        ).to(self.device)
-        self.processor = AutoProcessor.from_pretrained(
-            "microsoft/Florence-2-large",
-            trust_remote_code=True
-        )
-        self.semaphore = threading.Semaphore(max_parallel)
+# class Florence:
+#     def __init__(self, max_parallel: int = 1):
+#         self.device = 'cuda'
+#         self.torch_dtype = torch.float16
+#         from transformers import AutoModelForCausalLM
+#         # self.model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large", trust_remote_code=True)
+#         self.model = AutoModelForCausalLM.from_pretrained(
+#             "microsoft/Florence-2-large",
+#             torch_dtype=self.torch_dtype,
+#             trust_remote_code=True
+#         ).to(self.device)
+#         self.processor = AutoProcessor.from_pretrained(
+#             "microsoft/Florence-2-large",
+#             trust_remote_code=True
+#         )
+#         self.semaphore = threading.Semaphore(max_parallel)
 
-    def detect_objects(self, image: Image.Image, target_labels: List[str]) -> List[Bbox]:
-        if not target_labels or not image:
-            raise ValueError("A valid image and at least one target label are required.")
+#     def detect_objects(self, image: Image.Image, target_labels: List[str]) -> List[Bbox]:
+#         if not target_labels or not image:
+#             raise ValueError("A valid image and at least one target label are required.")
 
-        with self.semaphore:
-            image = image.convert('RGB')
-            prompt = "<OD>"
+#         with self.semaphore:
+#             image = image.convert('RGB')
+#             prompt = "<OD>"
 
-            inputs = self.processor(
-                text=prompt,
-                images=image,
-                return_tensors="pt"
-            ).to(self.device, self.torch_dtype)
+#             inputs = self.processor(
+#                 text=prompt,
+#                 images=image,
+#                 return_tensors="pt"
+#             ).to(self.device, self.torch_dtype)
 
-            generated_ids = self.model.generate(
-                input_ids=inputs["input_ids"],
-                pixel_values=inputs["pixel_values"],
-                max_new_tokens=4096,
-                num_beams=3,
-                do_sample=False
-            )
+#             generated_ids = self.model.generate(
+#                 input_ids=inputs["input_ids"],
+#                 pixel_values=inputs["pixel_values"],
+#                 max_new_tokens=4096,
+#                 num_beams=3,
+#                 do_sample=False
+#             )
 
-            generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
-            parsed_result = self.processor.post_process_generation(
-                generated_text,
-                task="<OD>",
-                image_size=(image.width, image.height)
-            )
+#             generated_text = self.processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+#             parsed_result = self.processor.post_process_generation(
+#                 generated_text,
+#                 task="<OD>",
+#                 image_size=(image.width, image.height)
+#             )
 
-            boxes = parsed_result.get('boxes', [])
-            labels = parsed_result.get('labels', [])
-            detections = []
+#             boxes = parsed_result.get('boxes', [])
+#             labels = parsed_result.get('labels', [])
+#             detections = []
 
-            for box, label in zip(boxes, labels):
-                if label in target_labels:
-                    detections.append(Bbox(box=box, score=1.0, label=label))
+#             for box, label in zip(boxes, labels):
+#                 if label in target_labels:
+#                     detections.append(Bbox(box=box, score=1.0, label=label))
 
-            return detections
+#             return detections
 
-florence = Florence()
+# florence = Florence()
 
-def florence_v2(image: Image.Image, objects: List[str]) -> Tuple[List[Bbox], Image.Image]:
-    """Detect objects in an image using Florence V2.
+# def florence_v2(image: Image.Image, objects: List[str]) -> Tuple[List[Bbox], Image.Image]:
+#     """Detect objects in an image using Florence V2.
 
-    Args:
-        image: Input image.
-        objects: List of objects to detect in the image.
+#     Args:
+#         image: Input image.
+#         objects: List of objects to detect in the image.
 
-    Returns:
-        A tuple (
-            the list of bbox,
-            image with bbox drawn,
-        )
-    """
-    image = image.convert('RGB')
-    detections = florence._run(image, objects)
-    drawn_image = plot_bounding_boxes(image.copy(), detections)
-    return detections, drawn_image
+#     Returns:
+#         A tuple (
+#             the list of bbox,
+#             image with bbox drawn,
+#         )
+#     """
+#     image = image.convert('RGB')
+#     detections = florence._run(image, objects)
+#     drawn_image = plot_bounding_boxes(image.copy(), detections)
+#     return detections, drawn_image
 
-def _florence_demo():
-    device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+# def _florence_demo():
+#     device = "cuda:0" if torch.cuda.is_available() else "cpu"
+#     torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
 
-    model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large", torch_dtype=torch_dtype, trust_remote_code=True).to(device)
-    processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large", trust_remote_code=True)
+#     model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large", torch_dtype=torch_dtype, trust_remote_code=True).to(device)
+#     processor = AutoProcessor.from_pretrained("microsoft/Florence-2-large", trust_remote_code=True)
 
-    prompt = "<OD>"
+#     prompt = "<OD>"
 
-    url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg?download=true"
-    image = Image.open(requests.get(url, stream=True).raw)
+#     url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/transformers/tasks/car.jpg?download=true"
+#     image = Image.open(requests.get(url, stream=True).raw)
 
-    inputs = processor(text=prompt, images=image, return_tensors="pt").to(device, torch_dtype)
+#     inputs = processor(text=prompt, images=image, return_tensors="pt").to(device, torch_dtype)
 
-    generated_ids = model.generate(
-        input_ids=inputs["input_ids"],
-        pixel_values=inputs["pixel_values"],
-        max_new_tokens=4096,
-        num_beams=3,
-        do_sample=False
-    )
-    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+#     generated_ids = model.generate(
+#         input_ids=inputs["input_ids"],
+#         pixel_values=inputs["pixel_values"],
+#         max_new_tokens=4096,
+#         num_beams=3,
+#         do_sample=False
+#     )
+#     generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
 
-    parsed_answer = processor.post_process_generation(generated_text, task="<OD>", image_size=(image.width, image.height))
+#     parsed_answer = processor.post_process_generation(generated_text, task="<OD>", image_size=(image.width, image.height))
 
-    print(parsed_answer)
+#     print(parsed_answer)
 
 
 def _owl_demo():
@@ -359,4 +377,13 @@ for tool in tools:
     tool["type"] = "function"
 
 
-operators = [grounding_dino, owl_v2, florence_v2]
+operators = [grounding_dino, owl_v2]
+
+def test_operators():
+    image = Image.open('/hy-tmp/count/train/010be05b8bd90c7d.jpg')
+    objects = ['person', 'dog', 'cat', 'car']
+    print(grounding_dino(image, objects))
+    print(owl_v2(image, objects))
+
+if __name__ == '__main__':
+    test_operators()

@@ -19,6 +19,11 @@ import time
 from db import *
 import importlib.util
 
+optimize = None
+def set_optimize(new_optimize):
+    global optimize
+    optimize = new_optimize
+
 def get_correct_incorrect(runs):
     correct = []
     incorrect = []
@@ -28,6 +33,7 @@ def get_correct_incorrect(runs):
         else:
             incorrect.append(run)
     return correct, incorrect
+
 
 async def main(args):
     graph = get_graph_from_a_file(args.seed_file)
@@ -63,20 +69,24 @@ async def main(args):
         await asyncio.gather(*[graph.run(task) for graph in graphs for task in tasks])
 
         graph = get_strongest_graph()
-        while True:
-            with S(es) as session:
-                session.expire_on_commit = False
-                graph = session.merge(graph)
-                correct, incorrect = get_correct_incorrect(graph.runs)
-                print(f"Current runs: {len(graph.runs)}, Correct: {len(correct)}, Incorrect: {len(incorrect)}")
-            if min(len(correct), len(incorrect)) >= 5:
-                break
-
+        with S(es) as session:
+            session.expire_on_commit = False
+            graph = session.merge(graph)
+            correct, incorrect = get_correct_incorrect(graph.runs)
+            print(f"Current runs: {len(graph.runs)}, Correct: {len(correct)}, Incorrect: {len(incorrect)}")
+        tot = 0
+        while min(len(correct), len(incorrect)) < 5:
+            tot += 1
             tasks = get_random_or_high_variance_task(args.experiment_strategy)
             print(f"Running additional tasks: {[task['id'] for task in tasks]}")
             await asyncio.gather(*[graph.run(task) for task in tasks])
             import time
             time.sleep(1)
+            with S(es) as session:
+                session.expire_on_commit = False
+                graph = session.merge(graph)
+                correct, incorrect = get_correct_incorrect(graph.runs)
+                print(f"Current runs: {len(graph.runs)}, Correct: {len(correct)}, Incorrect: {len(incorrect)}")
 
 
         if graph == strongest:
@@ -97,6 +107,17 @@ async def main(args):
         await asyncio.gather(*[graph.run(task) for task in tasks])
 
 
+def test_run(args):
+    graph = get_graph_from_a_file(args.seed_file)
+    task = get_random_task()
+    print(task)
+    print(asyncio.run(graph.run(task)))
+    raise
+
+
+def test_optimize(args):
+    graph = get_graph_from_a_file(args.seed_file)
+    optimize(graph)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="AFlow Optimizer")
@@ -114,35 +135,35 @@ if __name__ == '__main__':
     parser.add_argument(
         "--data-factory",
         type=str,
-        help="Dataset file",
     )
     parser.add_argument(
         "--prompt-file",
         type=str,
-        help="Prompt file",
     )
     parser.add_argument(
         "--db-name",
         type=str,
-        help="Database name",
     )
     parser.add_argument(
         "--inference-model",
         type=str,
         default="plus",
-        help="Model to use for inference when calling lmm()",
     )
     parser.add_argument(
         "--optimization-model",
         type=str,
         default="max",
-        help="Model to use for optimization",
     )
     parser.add_argument(
         "--experiment-strategy",
-        type=str,
-        default="5",
-        help="how many tasks to run, 'all' for full eval",
+        type=int,
+        default=5,
+        help="how many tasks to run per evaluation",
+    )
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        default=False
     )
     args = parser.parse_args()
 
@@ -167,18 +188,26 @@ if __name__ == '__main__':
     
     data_file_path = os.path.abspath(args.data_factory)
 
-    spec = importlib.util.spec_from_file_location("data_module", data_file_path)
-    data_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(data_module)
+    data_spec = importlib.util.spec_from_file_location("data_module", data_file_path)
+    data_module = importlib.util.module_from_spec(data_spec)
+    data_spec.loader.exec_module(data_module)
     new_get_all_task_ids = getattr(data_module, "get_all_task_ids", None)
     new_get_task_by_id = getattr(data_module, "get_task_by_id", None)
 
-    # Step 5: Validate that the function exists and is callable
     assert callable(new_get_all_task_ids) and callable(new_get_task_by_id)
+    set_data(new_get_all_task_ids, new_get_task_by_id)
+
+    prompt_spec = importlib.util.spec_from_file_location("prmopt_module", args.prompt_file)
+    prompt_module = importlib.util.module_from_spec(prompt_spec)
+    prompt_spec.loader.exec_module(prompt_module)
+    new_optimize = getattr(prompt_module, "optimize", None)
+    print(new_optimize)
+    assert callable(new_optimize)
+    set_optimize(new_optimize)
+
     with open(args.prompt_file, "r") as f:
         exec(f.read())
     
-    set_data(new_get_all_task_ids, new_get_task_by_id)
 
     from anode import set_inference_model, set_optimization_model
     set_inference_model(args.inference_model)
@@ -187,6 +216,11 @@ if __name__ == '__main__':
     es = create_engine(f"sqlite:///{args.db_name}")
     SQLModel.metadata.create_all(es)
     set_es(es)
+
+    if args.test:
+        test_run(args)
+        test_optimize(args)
+        exit()
 
     with S(es) as session:
         session.expire_on_commit = False

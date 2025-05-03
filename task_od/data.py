@@ -60,17 +60,13 @@ def calculate_ap(pred, gt_boxes, iou_threshold):
     return ap
 
 def compute_coco_mAP(predictions, gt_boxes, gt_label_idx, labels, iou_thresholds=np.arange(0.5, 1.0, 0.05)):
-    # Get the label name from the index
     gt_label = labels[gt_label_idx]
 
-    # Filter predictions by the label
     pred = [p for p in predictions if p['label'] == gt_label]
 
-    # Convert gt_boxes to the format expected by calculate_ap
     formatted_gt_boxes = []
     for box in gt_boxes:
         if int(box[4]) == gt_label_idx:
-            # Convert [x, y, w, h, label_idx] to [x1, y1, x2, y2]
             x, y, w, h = box[:4]
             formatted_gt_boxes.append({'bbox': [x, y, x + w, y + h]})
 
@@ -95,19 +91,13 @@ def get_task_by_id(id):
 
     # Choose a random label to ask about
     label_idx = random.randint(0, len(labels) - 1)
-    ret['question'] = labels[label_idx]
+    ret['question'] = [labels[label_idx]]
 
-    # Get all annotations for this image
     all_annotations = ret['all_annotations']
 
-    # Convert annotations to the expected format
-    # Each annotation is [x, y, w, h, label_idx]
-    # We need to convert to [x1, y1, x2, y2] format for IoU calculation
     ret['answer'] = []
     for ann in all_annotations:
-        # Check if this annotation is for the requested label
         if int(ann[4]) == label_idx:
-            # Convert [x, y, w, h] to [x1, y1, x2, y2]
             x, y, w, h = ann[:4]
             ret['answer'].append([x, y, x + w, y + h])
 

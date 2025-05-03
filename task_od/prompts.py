@@ -1,7 +1,7 @@
 
 WORKFLOW_OPTIMIZE_PROMPT = """We are optimizing a function `run` that accurately detects objects. 
 
-it can use as nodes 3 leading object grounding models.
+you can use 2 leading object grounding models.
 your code should return a List[Bbox].
 `
 class Bbox(TypedDict):
@@ -61,19 +61,6 @@ def owl_v2(image: Image.Image, objects: List[str], threshold=0.1) -> Tuple[List[
     """
     ...
 
-
-def florence_v2(image: Image.Image, objects: List[str]) -> Tuple[List[Bbox], Image.Image]:
-    """Detect objects in an image using Florence V2.
-
-    Args:
-        image: Input image.
-        objects: List of objects to detect in the image.
-
-    Returns:
-        A tuple (
-            the list of bbox,
-            image with bbox drawn,
-        )
-    """
-    ...
 '''
+def optimize():
+    raise

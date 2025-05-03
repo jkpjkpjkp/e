@@ -52,12 +52,12 @@ def trim_result(detections: List[Bbox]) -> List[Bbox]:
 
 
 def run(image: Image.Image, labels: List[str]) -> List[Bbox]:
-    """Perform object detection on an image with given texts and return annotated results."""
     owl_threshold = 0.1
     dino_box_threshold = 0.2
     dino_text_threshold = 0.1
-    owl_detections = owl_v2(image, labels, threshold=owl_threshold)[0]
     dino_detections = grounding_dino(image, labels, box_threshold=dino_box_threshold, text_threshold=dino_text_threshold)[0]
+    assert dino_detections
+    owl_detections = owl_v2(image, labels, threshold=owl_threshold)[0]
     trimmed_dino_detections = trim_result(dino_detections)
 
     owl_labels = {x['label'] for x in owl_detections}

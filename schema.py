@@ -91,11 +91,12 @@ def main():
             print("No runs found.")
         
         # Find an example of a 0-scoring run
-        cursor.execute("SELECT graph_id, task_id, score FROM run WHERE score = 0 LIMIT 1")
+        cursor.execute("SELECT graph_id, task_id, score, output FROM run WHERE score = 0 LIMIT 1")
         example_run = cursor.fetchone()
         if example_run:
             print("Example of a 0-scoring run:")
             print(f"Graph ID: {example_run[0]}, Task ID: {example_run[1]}, Score: {example_run[2]}")
+            print(f"Output: {example_run[3]}")
         else:
             print("No 0-scoring runs found.")
     
@@ -106,7 +107,7 @@ def main():
 if __name__ == "__main__":
     global db_path
     parser = argparse.ArgumentParser(description="Database Schema Printer")
-    parser.add_argument("--db_path", help="Path to the SQLite database file")
+    parser.add_argument("--db-path", help="Path to the SQLite database file")
     args = parser.parse_args()
     db_path = args.db_path
     main()

@@ -119,7 +119,3 @@ def optimize(graph):
     )
     return put(graph)
 
-
-def test_optimize():
-    graph = get_graph_from_a_file('seed1.py')
-    optimize(graph)

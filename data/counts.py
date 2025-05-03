@@ -5,7 +5,7 @@ import random
 df = pl.read_parquet('dataset_grouped.parquet')
 
 def get_all_task_ids():
-    return list(range(len(df)))
+    return list(map(str, range(len(df))))
 
 
 def IoU(output, answer):
@@ -24,7 +24,6 @@ def IoU(output, answer):
 
 
 def get_task_by_id(id):
-    id = int(id)
     ret = df[id].to_dict()
     ret['image'] = Image.open(ret['image_path'][0])
     ret['question'] = f"What is the smallest bounding box containing ALL {ret['label'][0]}s in the image? "
