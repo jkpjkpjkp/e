@@ -1,5 +1,6 @@
 import re
-from typing import Any, Dict, Type
+import json
+from typing import Any, Dict, Type, List, Optional, Callable
 from pydantic import BaseModel, Field
 from openai import OpenAI
 import base64
@@ -21,6 +22,10 @@ def set_optimization_model(model_name):
     global optimization_model
     optimization_model = model_name
 
+# Export the parse function for use in other modules
+__all__ = ['LLM', 'lmm', 'custom', 'ActionNode', 'parse',
+           'set_inference_model', 'set_optimization_model']
+
 
 
 def to_base64(image: Image.Image):
@@ -36,7 +41,7 @@ class LLM:
             base_url='http://localhost:7912'
         )
 
-    def aask(self, prompt, system_msgs=''):
+    def aask(self, prompt, system_msgs='', tools=None):
         messages = [
             {"role": "system", "content": system_msgs or "You are a helpful assistant. "},
         ]
@@ -57,11 +62,17 @@ class LLM:
                     content.append({"type": "image_url", "image_url": {"url": to_base64(stuff)}})
             messages.append({"role": "user", "content": content})
 
-        return self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=0,
-        ).choices[0].message.content
+        kwargs = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": 0,
+        }
+
+        if tools:
+            kwargs["tools"] = tools
+
+        response = self.client.chat.completions.create(**kwargs)
+        return response.choices[0].message
 
 def lmm(*args, **kwargs):
     good_arg = [x if isinstance(x, str) else x.copy().convert('RGB') for x in args]
@@ -200,6 +211,70 @@ def custom(*args, dna=GenerateOp):
             processed_args.append(arg)
 
     return ActionNode(dna).fill(context=processed_args, llm=LLM(model=optimization_model))
+
+def parse(response_text):
+    """
+    Parse a response text to extract tool calls.
+
+    Args:
+        response_text: The text response from the LLM
+
+    Returns:
+        A callable function that executes the tool call, or None if no tool call is found
+    """
+    # Check for tool call format in the response
+    tool_call_pattern = r"```json\s*(\{.*?\})\s*```"
+    match = re.search(tool_call_pattern, response_text, re.DOTALL)
+
+    if not match:
+        # Try alternative format with function name and arguments
+        function_pattern = r"(\w+)\((.*?)\)"
+        match = re.search(function_pattern, response_text)
+        if match:
+            function_name = match.group(1)
+            args_str = match.group(2)
+
+            # Try to parse arguments
+            try:
+                # Handle simple string arguments
+                if args_str.startswith('"') or args_str.startswith("'"):
+                    args = [arg.strip().strip('"\'') for arg in args_str.split(',')]
+                    return lambda: globals()[function_name](*args)
+                # Handle JSON-like arguments
+                else:
+                    # Convert to proper JSON format
+                    args_str = args_str.replace("'", '"')
+                    args = json.loads(f"[{args_str}]")
+                    return lambda: globals()[function_name](*args)
+            except (json.JSONDecodeError, KeyError, TypeError):
+                return None
+        return None
+
+    try:
+        tool_call_json = json.loads(match.group(1))
+
+        # Extract function name and arguments
+        function_name = tool_call_json.get("name")
+        arguments = tool_call_json.get("arguments", {})
+
+        if not function_name or function_name not in globals():
+            return None
+
+        # Create a callable that will execute the function with the arguments
+        if isinstance(arguments, dict):
+            return lambda: globals()[function_name](**arguments)
+        elif isinstance(arguments, str):
+            try:
+                # Try to parse as JSON
+                args_dict = json.loads(arguments)
+                return lambda: globals()[function_name](**args_dict)
+            except json.JSONDecodeError:
+                # If not valid JSON, pass as a single string argument
+                return lambda: globals()[function_name](arguments)
+        else:
+            return None
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return None
 
 def test_custom():
     print(custom('hi! '))
