@@ -5,9 +5,7 @@ import PIL.Image
 import requests
 import base64
 from io import BytesIO
-from .dino import draw_boxes, format_detections, get_dino
-from .owl import get_owl
-from .bbox import Bbox
+from tools import grounding_dino, owl_v2, format_detections, Bbox
 
 class ObjectDetectionFactory:
     """Grounding tool interfacing for object detection."""
@@ -65,8 +63,8 @@ class ObjectDetectionFactory:
         # Ensure image is in RGB format for consistent processing
         image = image.convert('RGB')
 
-        owl_detections = get_owl()(image, texts, threshold=owl_threshold)[2]
-        dino_detections = get_dino()(image, texts, box_threshold=dino_box_threshold, text_threshold=dino_text_threshold)[2]
+        owl_detections = owl_v2(image, texts, threshold=owl_threshold)[0]
+        dino_detections = grounding_dino(image, texts, box_threshold=dino_box_threshold, text_threshold=dino_text_threshold)[0]
         trimmed_dino_detections = ObjectDetectionFactory.trim_result(dino_detections)
 
         owl_labels = {x['label'] for x in owl_detections}
@@ -74,12 +72,10 @@ class ObjectDetectionFactory:
 
         return filtered_detections
 
-def run(image: Img, texts: List[str]) -> Tuple[Img, str, List[Bbox]]:
+def run(image: Img, texts: List[str]) -> List[Bbox]:
     """Perform object detection on an image with given texts and return annotated results."""
     owl_threshold = 0.1
     dino_box_threshold = 0.2
     dino_text_threshold = 0.1
     detections = ObjectDetectionFactory._run(image, texts, owl_threshold, dino_box_threshold, dino_text_threshold)
-    image_with_boxes = draw_boxes(image.copy(), detections)
-    detection_details = format_detections(detections)
-    return image_with_boxes, detection_details, detections
+    return detections

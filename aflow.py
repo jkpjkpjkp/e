@@ -407,31 +407,31 @@ async def main():
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="AFlow Optimizer")
     parser.add_argument(
-        "--dataset",
+        "--dataset-file",
         type=str,
         required=True,
         help="Dataset type",
     )
     parser.add_argument(
-        "--db_name",
+        "--db-name",
         type=str,
         required=True,
         help="Optimized result save db",
     )
     parser.add_argument(
-        "--seed_file",
+        "--seed-file",
         type=str,
         required=True,
         help="initial graph python file",
     )
     parser.add_argument(
-        "--inference_model",
+        "--inference-model",
         type=str,
-        default="max",
+        default="plus",
         help="Model to use for inference when calling lmm()",
     )
     parser.add_argument(
-        "--optimization_model",
+        "--optimization-model",
         type=str,
         default="max",
         help="Model to use for optimization",
@@ -442,7 +442,7 @@ if __name__ == '__main__':
     elif args.inference_model == 'max':
         args.inference_model = 'qwen-vl-max-latest'
     
-    with open(f"{args.dataset}.py", "r") as f:
+    with open(args.dataset_file, "r") as f:
         exec(f.read())
 
     from anode import set_inference_model, set_optimization_model

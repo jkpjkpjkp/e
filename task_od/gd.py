@@ -16,11 +16,6 @@ class Bbox(TypedDict):
     score: float
     label: str
 
-images = []
-def set_images(imgs):
-    global images
-    images = imgs
-
 class Dino:
     def __init__(self, max_parallel=1):
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -48,12 +43,12 @@ class Dino:
                     for box, score, label in zip(results['boxes'], results['scores'], results['labels'])]
 
 dino = Dino()
-def grounding_dino(objects: List[str], image_id: int = -1, box_threshold=0.2, text_threshold=0.15) -> Tuple[List[Bbox], Image.Image]:
+def grounding_dino(image: Image.Image, objects: List[str], box_threshold=0.2, text_threshold=0.15) -> Tuple[List[Bbox], Image.Image]:
     """Detect objects in an image using Grounding DINO.
     
     Args:
+        image: Input image.
         objects: List of objects to detect in the image.
-        image_id: 0-index of the image to detect, among all images you see. defaults to the last image you see. 
         box_threshold: Threshold for bounding box confidence.
         text_threshold: Threshold for text confidence.
 
@@ -63,7 +58,6 @@ def grounding_dino(objects: List[str], image_id: int = -1, box_threshold=0.2, te
             image with bbox drawn,
         )
     """
-    image = images[image_id]
     if not image:
         return None, 'Please upload an image.'
     if not objects:
@@ -166,12 +160,12 @@ class Owl:
 
 owl = Owl()
 
-def owl_v2(objects: List[str], image_id: int = -1, threshold=0.1) -> Tuple[List[Bbox], Image.Image]:
+def owl_v2(image: Image.Image, objects: List[str], threshold=0.1) -> Tuple[List[Bbox], Image.Image]:
     """Detect objects in an image using OWLv2.
     
     Args:
+        image: Input image.
         objects: List of objects to detect in the image.
-        image_id: 0-index of the image to detect, among all images you see. defaults to the last image you see. 
         threshold: Confidence score threshold.
 
     Returns:
@@ -180,7 +174,6 @@ def owl_v2(objects: List[str], image_id: int = -1, threshold=0.1) -> Tuple[List[
             image with bbox drawn,
         )
     """
-    image = images[image_id]
     if not image:
         return None, 'Please upload an image.'
     if not objects:
@@ -245,12 +238,12 @@ class Florence:
 
 florence = Florence()
 
-def florence_v2(objects: List[str], image_id: int = -1) -> Tuple[List[Bbox], Image.Image]:
+def florence_v2(image: Image.Image, objects: List[str]) -> Tuple[List[Bbox], Image.Image]:
     """Detect objects in an image using Florence V2.
 
     Args:
+        image: Input image.
         objects: List of objects to detect in the image.
-        image_id: 0-index of the image to detect, among all images you see. defaults to the last image you see.
 
     Returns:
         A tuple (
@@ -258,7 +251,6 @@ def florence_v2(objects: List[str], image_id: int = -1) -> Tuple[List[Bbox], Ima
             image with bbox drawn,
         )
     """
-    image = images[image_id]
     if not image:
         return None, 'Please upload an image.'
     if not objects:
