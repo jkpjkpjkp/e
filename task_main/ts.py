@@ -1,5 +1,7 @@
 from anode import lmm
 
+MAX_ITERATIONS = 10
+
 def run(image, question):
     info = []
     for _ in range(MAX_ITERATIONS):

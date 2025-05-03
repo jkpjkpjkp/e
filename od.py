@@ -180,6 +180,8 @@ class Florence:
     def __init__(self, max_parallel: int = 1):
         self.device = 'cuda'
         self.torch_dtype = torch.float16
+        from transformers import AutoModelForCausalLM
+        # self.model = AutoModelForCausalLM.from_pretrained("microsoft/Florence-2-large", trust_remote_code=True)
         self.model = AutoModelForCausalLM.from_pretrained(
             "microsoft/Florence-2-large",
             torch_dtype=self.torch_dtype,

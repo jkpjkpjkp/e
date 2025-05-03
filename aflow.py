@@ -17,6 +17,7 @@ from util import *
 from tqdm import tqdm
 import time
 from db import *
+import importlib.util
 
 def get_correct_incorrect(runs):
     correct = []
@@ -164,12 +165,20 @@ if __name__ == '__main__':
     if not args.db_name:
         args.db_name = f"{args.folder}/db.sqlite"
     
-    with open(args.data_factory, "r") as f:
-        exec(f.read())
+    data_file_path = os.path.abspath(args.data_factory)
+
+    spec = importlib.util.spec_from_file_location("data_module", data_file_path)
+    data_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(data_module)
+    new_get_all_task_ids = getattr(data_module, "get_all_task_ids", None)
+    new_get_task_by_id = getattr(data_module, "get_task_by_id", None)
+
+    # Step 5: Validate that the function exists and is callable
+    assert callable(new_get_all_task_ids) and callable(new_get_task_by_id)
     with open(args.prompt_file, "r") as f:
         exec(f.read())
     
-    set_data(get_all_task_ids, get_task_by_id)
+    set_data(new_get_all_task_ids, new_get_task_by_id)
 
     from anode import set_inference_model, set_optimization_model
     set_inference_model(args.inference_model)

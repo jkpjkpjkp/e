@@ -7,7 +7,7 @@ import asyncio
 from PIL import Image
 from io import BytesIO
 
-from aflow_prompt import WORKFLOW_OPTIMIZE_PROMPT, WORKFLOW_OPTIMIZE_GUIDANCE, format_log, format_experience
+from task_main.prompts import WORKFLOW_OPTIMIZE_PROMPT, WORKFLOW_OPTIMIZE_GUIDANCE, format_log, format_experience
 from anode import custom
 import base64
 import argparse
@@ -32,6 +32,8 @@ def set_data(get_all_task_ids_, get_task_by_id_):
     global get_all_task_ids, get_task_by_id
     get_all_task_ids = get_all_task_ids_
     get_task_by_id = get_task_by_id_
+    assert get_all_task_ids is not None
+    assert get_task_by_id is not None
 
 class Graph(SQLModel, table=True):
     id: int = Field(primary_key=True)

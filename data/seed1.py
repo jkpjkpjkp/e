@@ -1,5 +1,5 @@
 from PIL import Image
-from op import lmm
+from anode import lmm
 
 PROMPT1 = """when answering question '{question}', a first step can be outputting a bounding box containing area that is related to this question. can you output the coordinates of a x y x y bounding box between <bbox> and </bbox>,  that contains all relevant information and keeps out irrelevant parts?"""
 PROMPT0 = "{question}? let's think step by step and put final answer in curly braces like this: {{final_numeric_answer}}"

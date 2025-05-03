@@ -3,7 +3,8 @@ from PIL import Image
 import random
 import numpy as np
 
-df = pl.read_parquet('dataset_grouped.parquet')
+# Use the new dataset with all bounding boxes grouped together
+df = pl.read_parquet('dataset_all_grouped.parquet')
 
 def get_all_task_ids():
     return list(range(len(df)))
@@ -58,24 +59,70 @@ def calculate_ap(pred, gt_boxes, iou_threshold):
         ap += p / 101
     return ap
 
-def compute_coco_mAP(predictions, gt_boxes, gt_label, iou_thresholds=np.arange(0.5, 1.0, 0.05)):
+def compute_coco_mAP(predictions, gt_boxes, gt_label_idx, labels, iou_thresholds=np.arange(0.5, 1.0, 0.05)):
+    # Get the label name from the index
+    gt_label = labels[gt_label_idx]
+
+    # Filter predictions by the label
     pred = [p for p in predictions if p['label'] == gt_label]
+
+    # Convert gt_boxes to the format expected by calculate_ap
+    formatted_gt_boxes = []
+    for box in gt_boxes:
+        if int(box[4]) == gt_label_idx:
+            # Convert [x, y, w, h, label_idx] to [x1, y1, x2, y2]
+            x, y, w, h = box[:4]
+            formatted_gt_boxes.append({'bbox': [x, y, x + w, y + h]})
+
     ap_thresholds = []
     for iou_threshold in iou_thresholds:
-        ap = calculate_ap(pred, gt_boxes, iou_threshold)
+        ap = calculate_ap(pred, formatted_gt_boxes, iou_threshold)
         ap_thresholds.append(ap)
     return np.mean(ap_thresholds)
 
 def get_task_by_id(id):
     id = int(id)
-    ret = df[id].to_dict()
-    ret['image'] = Image.open(ret['image_path'][0])
-    ret['question'] = ret['label'][0]
-    ret['answer'] = list(ret['annotations'][0])  # List of dicts with 'bbox' and 'class'
-    ret['answer'] = [list(x) for x in ret['answer']]
+    row = df.row(id, named=True)
+    ret = dict(row)
+
+    # Create a dummy image with the correct dimensions
+    width = ret['width']
+    height = ret['height']
+    ret['image'] = Image.new('RGB', (width, height), (255, 255, 255))
+
+    # Get all labels for this image
+    labels = ret['labels']
+
+    # Choose a random label to ask about
+    label_idx = random.randint(0, len(labels) - 1)
+    ret['question'] = labels[label_idx]
+
+    # Get all annotations for this image
+    all_annotations = ret['all_annotations']
+
+    # Convert annotations to the expected format
+    # Each annotation is [x, y, w, h, label_idx]
+    # We need to convert to [x1, y1, x2, y2] format for IoU calculation
+    ret['answer'] = []
+    for ann in all_annotations:
+        # Check if this annotation is for the requested label
+        if int(ann[4]) == label_idx:
+            # Convert [x, y, w, h] to [x1, y1, x2, y2]
+            x, y, w, h = ann[:4]
+            ret['answer'].append([x, y, x + w, y + h])
+
     assert isinstance(ret['answer'], list)
-    assert isinstance(ret['answer'][0], list)
-    assert len(ret['answer'][0]) == 4
+    if ret['answer']:  # Make sure there's at least one annotation for this label
+        assert len(ret['answer'][0]) == 4
+
     ret['id'] = id
-    ret['score'] = lambda predictions: compute_coco_mAP(predictions, ret['answer'], ret['question'])
+
+    # Create a scoring function that computes mAP for the specific label
+    ret['score'] = lambda predictions: compute_coco_mAP(
+        predictions,
+        all_annotations,  # Pass all annotations
+        label_idx,        # Pass the label index
+        labels            # Pass all labels
+    )
+
     return ret
