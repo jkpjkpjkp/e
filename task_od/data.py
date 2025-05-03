@@ -3,8 +3,8 @@ from PIL import Image
 import random
 import numpy as np
 
-# Use the new dataset with all bounding boxes grouped together
-df = pl.read_parquet('dataset_all_grouped.parquet')
+# Use the dataset with bounding boxes grouped together
+df = pl.read_parquet('dataset_grouped.parquet')
 
 def get_all_task_ids():
     return list(range(len(df)))
