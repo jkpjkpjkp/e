@@ -212,16 +212,45 @@ def custom(*args, dna=GenerateOp):
 
     return ActionNode(dna).fill(context=processed_args, llm=LLM(model=optimization_model))
 
-def parse(response_text):
+def parse(response_text, function_map=None):
     """
     Parse a response text to extract tool calls.
 
     Args:
         response_text: The text response from the LLM
+        function_map: Optional dictionary mapping function names to callable functions
 
     Returns:
         A callable function that executes the tool call, or None if no tool call is found
     """
+    # Use globals() if function_map is not provided
+    if function_map is None:
+        function_map = globals()
+
+    # First, check if the response is already a JSON string
+    try:
+        json_data = json.loads(response_text)
+        if isinstance(json_data, dict) and "name" in json_data:
+            function_name = json_data.get("name")
+            arguments = json_data.get("arguments", {})
+
+            if not function_name or function_name not in function_map:
+                pass  # Will try other formats
+            else:
+                # Create a callable that will execute the function with the arguments
+                if isinstance(arguments, dict):
+                    return lambda: function_map[function_name](**arguments)
+                elif isinstance(arguments, str):
+                    try:
+                        # Try to parse as JSON
+                        args_dict = json.loads(arguments)
+                        return lambda: function_map[function_name](**args_dict)
+                    except json.JSONDecodeError:
+                        # If not valid JSON, pass as a single string argument
+                        return lambda: function_map[function_name](arguments)
+    except json.JSONDecodeError:
+        pass  # Not a JSON string, continue with other formats
+
     # Check for tool call format in the response
     tool_call_pattern = r"```json\s*(\{.*?\})\s*```"
     match = re.search(tool_call_pattern, response_text, re.DOTALL)
@@ -236,16 +265,111 @@ def parse(response_text):
 
             # Try to parse arguments
             try:
-                # Handle simple string arguments
-                if args_str.startswith('"') or args_str.startswith("'"):
-                    args = [arg.strip().strip('"\'') for arg in args_str.split(',')]
-                    return lambda: globals()[function_name](*args)
-                # Handle JSON-like arguments
+                # Check if the function exists
+                if function_name not in function_map:
+                    return None
+
+                # Parse the arguments
+                args = []
+                kwargs = {}
+
+                # Clean up the arguments string
+                args_str = args_str.strip()
+
+                # Split by comma, but respect quotes and brackets
+                parts = []
+                current = ""
+                bracket_count = 0
+                in_quotes = False
+                quote_char = None
+
+                for char in args_str:
+                    if char in ['"', "'"]:
+                        if not in_quotes:
+                            in_quotes = True
+                            quote_char = char
+                        elif char == quote_char:
+                            in_quotes = False
+                            quote_char = None
+                    elif char in ['[', '{']:
+                        bracket_count += 1
+                    elif char in [']', '}']:
+                        bracket_count -= 1
+
+                    if char == ',' and not in_quotes and bracket_count == 0:
+                        parts.append(current.strip())
+                        current = ""
+                    else:
+                        current += char
+
+                if current:
+                    parts.append(current.strip())
+
+                # Process each part
+                for part in parts:
+                    # Check if it's a keyword argument
+                    if '=' in part and not (part.startswith('"') or part.startswith("'")):
+                        key, value = part.split('=', 1)
+                        key = key.strip()
+                        value = value.strip()
+
+                        # Parse the value
+                        try:
+                            if value.startswith('"') or value.startswith("'"):
+                                # String value
+                                value = value.strip('"\'')
+                            elif value.startswith('[') and value.endswith(']'):
+                                # List value
+                                value = json.loads(value.replace("'", '"'))
+                            elif value.lower() in ['true', 'false']:
+                                # Boolean value
+                                value = value.lower() == 'true'
+                            else:
+                                # Try to parse as number
+                                try:
+                                    value = int(value)
+                                except ValueError:
+                                    try:
+                                        value = float(value)
+                                    except ValueError:
+                                        # Keep as string
+                                        pass
+
+                            kwargs[key] = value
+                        except Exception:
+                            # If parsing fails, use as is
+                            kwargs[key] = value
+                    else:
+                        # Positional argument
+                        try:
+                            if part.startswith('"') or part.startswith("'"):
+                                # String value
+                                args.append(part.strip('"\''))
+                            elif part.startswith('[') and part.endswith(']'):
+                                # List value
+                                args.append(json.loads(part.replace("'", '"')))
+                            elif part.lower() in ['true', 'false']:
+                                # Boolean value
+                                args.append(part.lower() == 'true')
+                            else:
+                                # Try to parse as number
+                                try:
+                                    args.append(int(part))
+                                except ValueError:
+                                    try:
+                                        args.append(float(part))
+                                    except ValueError:
+                                        # Keep as string
+                                        args.append(part)
+                        except Exception:
+                            # If parsing fails, use as is
+                            args.append(part)
+
+                # Create the callable
+                if kwargs:
+                    return lambda: function_map[function_name](*args, **kwargs)
                 else:
-                    # Convert to proper JSON format
-                    args_str = args_str.replace("'", '"')
-                    args = json.loads(f"[{args_str}]")
-                    return lambda: globals()[function_name](*args)
+                    return lambda: function_map[function_name](*args)
             except (json.JSONDecodeError, KeyError, TypeError):
                 return None
         return None
@@ -257,20 +381,20 @@ def parse(response_text):
         function_name = tool_call_json.get("name")
         arguments = tool_call_json.get("arguments", {})
 
-        if not function_name or function_name not in globals():
+        if not function_name or function_name not in function_map:
             return None
 
         # Create a callable that will execute the function with the arguments
         if isinstance(arguments, dict):
-            return lambda: globals()[function_name](**arguments)
+            return lambda: function_map[function_name](**arguments)
         elif isinstance(arguments, str):
             try:
                 # Try to parse as JSON
                 args_dict = json.loads(arguments)
-                return lambda: globals()[function_name](**args_dict)
+                return lambda: function_map[function_name](**args_dict)
             except json.JSONDecodeError:
                 # If not valid JSON, pass as a single string argument
-                return lambda: globals()[function_name](arguments)
+                return lambda: function_map[function_name](arguments)
         else:
             return None
     except (json.JSONDecodeError, KeyError, TypeError):

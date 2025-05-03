@@ -66,9 +66,9 @@ def compute_coco_mAP(predictions, gt_boxes, gt_label_idx, labels, iou_thresholds
 
     formatted_gt_boxes = []
     for box in gt_boxes:
-        if int(box[4]) == gt_label_idx:
-            x, y, w, h = box[:4]
-            formatted_gt_boxes.append({'bbox': [x, y, x + w, y + h]})
+        # Our dataset only has one label, so we don't need to check label index
+        x, y, w, h = box[:4]
+        formatted_gt_boxes.append({'bbox': [x, y, x + w, y + h]})
 
     ap_thresholds = []
     for iou_threshold in iou_thresholds:
@@ -86,20 +86,25 @@ def get_task_by_id(id):
     height = ret['height']
     ret['image'] = Image.new('RGB', (width, height), (255, 255, 255))
 
-    # Get all labels for this image
-    labels = ret['labels']
+    # Convert single label to a list of labels
+    labels = [ret['label']]
 
-    # Choose a random label to ask about
-    label_idx = random.randint(0, len(labels) - 1)
-    ret['question'] = [labels[label_idx]]
+    # Only one label, so index is always 0
+    label_idx = 0
+    # Return the label directly as the question since run() expects a list of labels
+    ret['question'] = labels
 
-    all_annotations = ret['all_annotations']
+    # Use the annotations field from the dataset
+    all_annotations = ret['annotations']
+
+    # Add an all_annotations field for the compute_coco_mAP function
+    ret['all_annotations'] = all_annotations
 
     ret['answer'] = []
+    # Since we only have one label, all annotations are for this label
     for ann in all_annotations:
-        if int(ann[4]) == label_idx:
-            x, y, w, h = ann[:4]
-            ret['answer'].append([x, y, x + w, y + h])
+        x, y, w, h = ann[:4]
+        ret['answer'].append([x, y, x + w, y + h])
 
     assert isinstance(ret['answer'], list)
     if ret['answer']:  # Make sure there's at least one annotation for this label
