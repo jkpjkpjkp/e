@@ -122,17 +122,6 @@ def test_optimize(args):
     pass
 
 def g_dino_detect(image, objects, box_threshold=0.3):
-    """
-    Detect objects in an image using the G_Dino model.
-
-    Args:
-        image: Input image (PIL.Image) or path to image
-        objects: List of object labels to detect
-        box_threshold: Confidence threshold for detections
-
-    Returns:
-        List of detection dictionaries with box, score, and label
-    """
     from PIL import Image
     from florence import G_Dino
 
