@@ -35,26 +35,22 @@ class Dino:
 
             with torch.no_grad():
                 outputs = self.gd_model(**inputs)
-                # Move outputs to CPU
-                outputs = {k: v.to('cpu') for k, v in outputs.items()}
-                # Move input_ids to CPU
-                input_ids = inputs['input_ids'].to('cpu')
+                assert outputs is not None, "Model returned None outputs"
+
+                # The outputs from the model is a dictionary, not an object with attributes
+                # We need to pass it directly to post_process_grounded_object_detection
                 results = self.gd_processor.post_process_grounded_object_detection(
-                    outputs, input_ids, box_threshold=box_threshold,
+                    outputs, inputs['input_ids'], box_threshold=box_threshold,
                     text_threshold=text_threshold, target_sizes=[image.size[::-1]]
                 )[0]
-            assert outputs
-            # results = self.gd_processor.post_process_grounded_object_detection(
-            #     outputs, inputs['input_ids'], box_threshold=box_threshold,
-            #     text_threshold=text_threshold, target_sizes=[image.size[::-1]]
-            # )[0]
+
             return [Bbox(box=box.tolist(), score=score.item(), label=label)
                     for box, score, label in zip(results['boxes'], results['scores'], results['labels'])]
 
 dino = Dino()
 def grounding_dino(image: Image.Image, objects: List[str], box_threshold=0.2, text_threshold=0.15) -> Tuple[List[Bbox], Image.Image]:
     """Detect objects in an image using Grounding DINO.
-    
+
     Args:
         image: Input image.
         objects: List of objects to detect in the image.
@@ -173,7 +169,7 @@ owl = Owl()
 
 def owl_v2(image: Image.Image, objects: List[str], threshold=0.1) -> Tuple[List[Bbox], Image.Image]:
     """Detect objects in an image using OWLv2.
-    
+
     Args:
         image: Input image.
         objects: List of objects to detect in the image.

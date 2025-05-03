@@ -119,3 +119,11 @@ def optimize(graph):
     )
     return put(graph)
 
+
+[{
+    "type": "function_call",
+    "id": "fc_12345xyz",
+    "call_id": "call_12345xyz",
+    "name": "get_weather",
+    "arguments": "{\"location\":\"Paris, France\"}"
+}]

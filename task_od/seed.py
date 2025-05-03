@@ -1,11 +1,12 @@
 import torch
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 from PIL import Image
 import PIL.Image
 import requests
 import base64
 from io import BytesIO
 from od import grounding_dino, owl_v2, Bbox
+from florence import G_Dino
 
 def box_trim(detections: List[Bbox]) -> List[Bbox]:
     """Trim overlapping detections based on occlusion threshold."""
@@ -54,13 +55,27 @@ def trim_result(detections: List[Bbox]) -> List[Bbox]:
 def run(image: Image.Image, labels: List[str]) -> List[Bbox]:
     owl_threshold = 0.1
     dino_box_threshold = 0.2
-    dino_text_threshold = 0.1
-    dino_detections = grounding_dino(image, labels, box_threshold=dino_box_threshold, text_threshold=dino_text_threshold)[0]
-    assert dino_detections
+    dino_text_threshold = 0.25
+
+    g_dino = G_Dino()
+    g_dino_detections = g_dino.detect(image, labels, box_threshold=dino_box_threshold, text_threshold=dino_text_threshold)
     owl_detections = owl_v2(image, labels, threshold=owl_threshold)[0]
-    trimmed_dino_detections = trim_result(dino_detections)
+
+    if not g_dino_detections:
+        print("No detections from G_Dino, using OWL detections only")
+        return owl_detections
+
+    trimmed_g_dino_detections = trim_result(g_dino_detections)
+
+    if not owl_detections:
+        print("No detections from OWL, using G_Dino detections only")
+        return trimmed_g_dino_detections
 
     owl_labels = {x['label'] for x in owl_detections}
-    filtered_detections = [x for x in trimmed_dino_detections if x['label'] in owl_labels]
+    filtered_detections = [x for x in trimmed_g_dino_detections if x['label'] in owl_labels]
+
+    if not filtered_detections:
+        print("No overlapping detections, returning combined results")
+        return trimmed_g_dino_detections + owl_detections
 
     return filtered_detections

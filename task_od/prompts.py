@@ -62,5 +62,5 @@ def owl_v2(image: Image.Image, objects: List[str], threshold=0.1) -> Tuple[List[
     ...
 
 '''
-def optimize():
+def optimize(graph):
     raise

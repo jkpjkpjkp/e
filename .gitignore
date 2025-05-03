@@ -14,3 +14,4 @@ wandb/
 *.parquet
 *.sqlite
 router.py
+*.jpg
