@@ -55,9 +55,10 @@ def trim_result(detections: List[Bbox]) -> List[Bbox]:
 def run(image: Image.Image, labels: List[str]) -> List[Bbox]:
     owl_threshold = 0.1
     dino_box_threshold = 0.2
+    dino_text_threshold = 0.25
 
     g_dino = G_Dino()
-    g_dino_detections = g_dino.detect(image, labels, box_threshold=dino_box_threshold)
+    g_dino_detections = g_dino.detect(image, labels, box_threshold=dino_box_threshold, text_threshold=dino_text_threshold)
     owl_detections = owl_v2(image, labels, threshold=owl_threshold)[0]
 
     if not g_dino_detections:

@@ -121,7 +121,7 @@ def test_optimize(args):
     print("Skipping optimization test")
     pass
 
-def g_dino_detect(image, objects, box_threshold=0.3):
+def g_dino_detect(image, objects, box_threshold=0.3, text_threshold=0.25):
     from PIL import Image
     from florence import G_Dino
 
@@ -129,7 +129,7 @@ def g_dino_detect(image, objects, box_threshold=0.3):
         image = Image.open(image)
 
     g_dino = G_Dino()
-    detections = g_dino.detect(image, objects, box_threshold=box_threshold)
+    detections = g_dino.detect(image, objects, box_threshold=box_threshold, text_threshold=text_threshold)
     return detections
 
 if __name__ == '__main__':

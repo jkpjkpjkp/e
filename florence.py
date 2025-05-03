@@ -16,7 +16,7 @@ class G_Dino:
         self.processor = AutoProcessor.from_pretrained(model_name)
         self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_name).to(self.device)
 
-    def detect(self, image: Image.Image, objects: List[str], box_threshold: float = 0.3) -> List[Bbox]:
+    def detect(self, image: Image.Image, objects: List[str], box_threshold: float = 0.3, text_threshold: float = 0.25) -> List[Bbox]:
         image = image.convert("RGB")
         text_prompt = ". ".join([obj.strip().lower() for obj in objects]) + "."
         inputs = self.processor(images=image, text=text_prompt, return_tensors="pt").to(self.device)
@@ -28,7 +28,7 @@ class G_Dino:
             outputs,
             inputs['input_ids'],
             box_threshold=box_threshold,
-            text_threshold=0.25,
+            text_threshold=text_threshold,
             target_sizes=[image.size[::-1]]
         )[0]
 
