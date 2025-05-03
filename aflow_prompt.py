@@ -1,5 +1,22 @@
+from sqlmodel import Field, Relationship, SQLModel, create_engine, Session as S, select
+from sqlalchemy import Column, func
+from sqlalchemy.types import JSON
+from typing import Dict, Any, Optional, List
+from pydantic import BaseModel
+import asyncio
 from PIL import Image
+from io import BytesIO
 
+from anode import custom
+import base64
+import argparse
+import sys
+import random
+import os
+from util import *
+from tqdm import tqdm
+import time
+from db import *
 def format_experience(graph):
     failures = [x for x in graph.children if x.score <= graph.score]
     successes = [x for x in graph.children if x.score > graph.score]
@@ -68,47 +85,41 @@ it is encouraged that you use cropping on the image to focus on important area.
 you can prompt the lmm to return specific xml fields, and use `re` to parse it. this way you can get typed return fields, for example x y x y bounding box for cropping or highlighting or analysis. 
 """
 
-OPERATOR_="{id}. {operator_name}: {desc}, with interface {interface}. \n"
+# OPERATOR_="{id}. {operator_name}: {desc}, with interface {interface}. \n"
+def optimize(graph):
 
-def format_operators(tools):
-    ret = ""
-    for i, tool in enumerate(tools):
-        ret += OPERATOR_.format(
-            id=i+1,
-            operator_name=tool['name'],
-            desc=tool['description'],
-            interface=(
-                f"{tool['name']}("
-                + ", ".join(
-                    f"{k}: {v['type']}"
-                    for k, v in tool['parameters']['properties'].items()
-                )
-                + ") -> "
-                + tool['callable'].__annotations__['return']
-            )
-        )
-    return ret
+    class GraphOp(BaseModel):
+        plan: str = Field(description="Thoughts, analysis, of plan on how to improve the graph")
+        modification: str = Field(description="Briefly describe the modification made to the graph")
+        graph: str = Field(description="The graph (`run` function)")
 
-def test_format_operators():
-    from task_od.gd import tools
-    ret = format_operators(tools)
-    print(ret)
+    with S(es) as session:
+        session.expire_on_commit = False
+        graph = session.merge(graph)
+        correct_runs, wrong_runs = get_correct_incorrect(graph.runs)
 
-# OPERATOR_DESCRIPTION = (
-#     OPERATOR_.format(
-#         id=1,
-#         operator_name="lmm",
-#         desc="a convenient wrapper around a large multimodal model api call",
-#         interface="lmm(*args: tuple[str | Image.Image]) -> str ",
-#     ) + OPERATOR_.format(
-#         id=2,
-#         operator_name="grounding_dino",
-#         desc="GroundingDINO object detection model",
-#         interface="""grounding_dino(image: Image.Image, objects: List[str], box_threshold=0.2, text_threshold=0.15) -> (List[Bbox], Image.Image), where Bbox is 
-# `class Bbox(TypedDict):
-#     box: List[float] # [x1, y1, x2, y2]
-#     score: float
-#     label: str`
-# and Image is the image with bbox and labels drawn""",
-#     )
-# )
+    ret = custom(
+        WORKFLOW_OPTIMIZE_PROMPT.format(
+            graph=graph.graph,
+            experience=format_experience(graph),
+            score=graph.score,
+            correct_qa='\n'.join(map(lambda run: f"question: {run.task['question']}, answer: {run.task['answer']} ", correct_runs[:5])),
+            wrong_qa='\n'.join(map(lambda run: f"question: {run.task['question']}, output(wrong): {run.output}, answer: {run.task['answer']} ", wrong_runs[:5])),
+            log=format_log(wrong_runs[-1].log),
+            operator_description=format,
+        ),
+        WORKFLOW_OPTIMIZE_GUIDANCE,
+        dna=GraphOp,
+    )
+
+    graph = Graph(
+        graph=ret.graph,
+        father=graph,
+        change=ret.modification,
+    )
+    return put(graph)
+
+
+def test_optimize():
+    graph = get_graph_from_a_file('seed1.py')
+    optimize(graph)

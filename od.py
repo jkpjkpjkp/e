@@ -58,10 +58,7 @@ def grounding_dino(image: Image.Image, objects: List[str], box_threshold=0.2, te
             image with bbox drawn,
         )
     """
-    if not image:
-        return None, 'Please upload an image.'
-    if not objects:
-        return image, 'Please specify at least one object.'
+    image = image.convert('RGB')
     detections = dino._run(image, objects, box_threshold, text_threshold)
     drawn_image = plot_bounding_boxes(image.copy(), detections)
     return detections, drawn_image
@@ -174,10 +171,7 @@ def owl_v2(image: Image.Image, objects: List[str], threshold=0.1) -> Tuple[List[
             image with bbox drawn,
         )
     """
-    if not image:
-        return None, 'Please upload an image.'
-    if not objects:
-        return image, 'Please specify at least one object.'
+    image = image.convert('RGB')
     detections = owl._run(image, objects, threshold)
     drawn_image = plot_bounding_boxes(image.copy(), detections)
     return detections, drawn_image
@@ -251,10 +245,7 @@ def florence_v2(image: Image.Image, objects: List[str]) -> Tuple[List[Bbox], Ima
             image with bbox drawn,
         )
     """
-    if not image:
-        return None, 'Please upload an image.'
-    if not objects:
-        return image, 'Please specify at least one object.'
+    image = image.convert('RGB')
     detections = florence._run(image, objects)
     drawn_image = plot_bounding_boxes(image.copy(), detections)
     return detections, drawn_image
@@ -366,9 +357,4 @@ for tool in tools:
     tool["type"] = "function"
 
 
-operators = {
-    'grounding_dino': {
-        'call': get_dino,
-        'args': ['image', 'objects', 'box_threshold', 'text_threshold']
-    }
-}
+operators = [grounding_dino, owl_v2, florence_v2]
