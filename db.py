@@ -152,13 +152,19 @@ class Graph(SQLModel, table=True):
         ret = run(task['image'], task['question'])
         sys.settrace(None)
 
-        score = task['score'](ret)
+        # Handle ChatCompletionMessage objects
+        if hasattr(ret, 'content'):
+            ret_content = ret.content
+        else:
+            ret_content = str(ret)
+
+        score = task['score'](ret_content)
 
         print(trace_log)
         ret = Run(
             graph_id=self.id,
             task_id=task['id'],
-            output=str(ret),
+            output=ret_content,
             log=trace_log,
             score=score,
         )
