@@ -146,12 +146,13 @@ class Owl:
     def __init__(self, max_parallel=3):
         self.device = 'cuda'
 
-        # Manually initialize the processor components
+        # Manually initialize the processor components with fixed size to avoid position embedding issues
         image_processor = Owlv2ImageProcessor(
             do_rescale=True,
             rescale_factor=1.0 / 255,  # pixel value rescale
             do_pad=True,
             do_resize=True,
+            size={"height": 768, "width": 768},  # Fixed size to avoid position embedding mismatch
             do_normalize=True
         )
 
@@ -170,7 +171,16 @@ class Owl:
             text_queries = [["a photo of " + text for text in texts]]
             inputs = self.processor(text=text_queries, images=image, return_tensors="pt").to(self.device)
             with torch.no_grad():
-                outputs = self.model(**inputs)
+                try:
+                    outputs = self.model(**inputs)
+                except RuntimeError as e:
+                    if "must match the size of tensor" in str(e) and "at non-singleton dimension" in str(e):
+                        standard_size = (768, 768)
+                        resized_image = image.resize(standard_size)
+                        inputs = self.processor(text=text_queries, images=resized_image, return_tensors="pt").to(self.device)
+                        outputs = self.model(**inputs)
+                    else:
+                        raise
             target_sizes = torch.Tensor([image.size[::-1]]).to(self.device)
             results = self.processor.post_process_object_detection(outputs=outputs, target_sizes=target_sizes, threshold=threshold)
             boxes, scores, labels = results[0]["boxes"], results[0]["scores"], results[0]["labels"]
