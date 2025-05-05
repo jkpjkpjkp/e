@@ -15,3 +15,5 @@ wandb/
 *.sqlite
 router.py
 *.jpg
+*.log
+router_log_images

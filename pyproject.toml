@@ -3,12 +3,10 @@ name = "e"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 dependencies = [
-    "einops>=0.8.1",
     "fastapi>=0.115.12",
     "loguru>=0.7.3",
-    "matplotlib>=3.10.1",
     "numpy>=2.2.5",
     "openai>=1.76.0",
     "pillow>=11.2.1",
@@ -20,7 +18,7 @@ dependencies = [
     "sqlmodel>=0.0.24",
     "tenacity>=9.1.2",
     "timm>=1.0.15",
-    "torch>=2.6.0",
+    "torch>=2.5.1",
     "tqdm>=4.67.1",
     "transformers>=4.51.3",
     "uvicorn>=0.34.2",
@@ -31,5 +29,5 @@ torch = [{index="pytorch-cu"}]
 torchvision = [{index="pytorch-cu"}]
 [[tool.uv.index]]
 name = "pytorch-cu"
-url = "https://download.pytorch.org/whl/cu128"
+url = "https://download.pytorch.org/whl/cu121"
 explicit = true
