@@ -9,7 +9,6 @@ from od import grounding_dino, owl_v2, Bbox
 from florence import G_Dino
 
 def box_trim(detections: List[Bbox]) -> List[Bbox]:
-    """Trim overlapping detections based on occlusion threshold."""
     occlusion_threshold = 0.3
     sorted_detections = sorted(detections, key=lambda x: x['score'], reverse=True)
     kept_detections = []
@@ -42,7 +41,6 @@ def box_trim(detections: List[Bbox]) -> List[Bbox]:
     return kept_detections
 
 def trim_result(detections: List[Bbox]) -> List[Bbox]:
-    """Group detections by label and trim each group."""
     unique_labels = {bbox['label'] for bbox in detections}
     final_detections = []
     for label in unique_labels:
@@ -61,21 +59,9 @@ def run(image: Image.Image, labels: List[str]) -> List[Bbox]:
     g_dino_detections = g_dino.detect(image, labels, box_threshold=dino_box_threshold, text_threshold=dino_text_threshold)
     owl_detections = owl_v2(image, labels, threshold=owl_threshold)[0]
 
-    if not g_dino_detections:
-        print("No detections from G_Dino, using OWL detections only")
-        return owl_detections
-
     trimmed_g_dino_detections = trim_result(g_dino_detections)
-
-    if not owl_detections:
-        print("No detections from OWL, using G_Dino detections only")
-        return trimmed_g_dino_detections
 
     owl_labels = {x['label'] for x in owl_detections}
     filtered_detections = [x for x in trimmed_g_dino_detections if x['label'] in owl_labels]
-
-    if not filtered_detections:
-        print("No overlapping detections, returning combined results")
-        return trimmed_g_dino_detections + owl_detections
 
     return filtered_detections
