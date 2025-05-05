@@ -117,13 +117,50 @@ def optimize(graph):
         father=graph,
         change=ret.modification,
     )
-    return put(graph)
+    return graph
 
 
-[{
-    "type": "function_call",
-    "id": "fc_12345xyz",
-    "call_id": "call_12345xyz",
-    "name": "get_weather",
-    "arguments": "{\"location\":\"Paris, France\"}"
-}]
+def debug(old_graph, new_graph, error):
+    with S(es) as session:
+        session.expire_on_commit = False
+        old_graph = session.merge(old_graph)
+        new_graph = session.merge(new_graph)
+        
+        prompt = f"""
+We attempted to optimize a graph for visual question answering, but the generated graph resulted in an error. Please analyze the error and provide a corrected version of the graph.
+
+**Original graph:**
+{old_graph.graph}
+
+**Modification description:**
+{new_graph.change}
+
+**Generated graph with error:**
+{new_graph.graph}
+
+**Error message:**
+{error}
+
+Please provide an analysis of what might have caused the error and suggest a correction. Then, provide the corrected graph.
+
+**Note:** Ensure the corrected graph is a valid Python function named `run`, with the same interface (taking an image and a question as input), and that it addresses the error.
+"""
+        
+        guidance = """
+When correcting the graph, focus on fixing the specific error indicated. Avoid making unnecessary changes to the graph. Ensure that the corrected graph is syntactically correct and logically sound.
+"""
+        
+        class DebugOp(BaseModel):
+            analysis: str = Field(description="Analysis of the error and what might be causing it")
+            correction: str = Field(description="Description of the correction made to the graph")
+            graph: str = Field(description="The corrected graph (run function)")
+        
+        ret = custom(prompt, guidance, dna=DebugOp)
+        
+        corrected_graph = Graph(
+            graph=ret.graph,
+            father=new_graph,
+            change=ret.correction,
+        )
+        
+        return put(corrected_graph)

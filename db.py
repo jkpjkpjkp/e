@@ -75,20 +75,21 @@ class Graph(SQLModel, table=True):
         assert task['answer']
         assert task['id'] is not None
 
-        graph_id = self.id
+        if self.id:
+            graph_id = self.id
 
-        with S(es) as session:
-            session.expire_on_commit = False
-            ret = session.exec(
-                select(Run)
-                .where(Run.graph_id == graph_id)
-                .where(Run.task_id == task['id'])
-            ).first()
-            if ret:
-                print(f"Cache hit for graph_id={graph_id}, task_id={task['id']}")
-                return ret
-            else:
-                print(f"Cache miss for graph_id={graph_id}, task_id={task['id']} - creating new run")
+            with S(es) as session:
+                session.expire_on_commit = False
+                ret = session.exec(
+                    select(Run)
+                    .where(Run.graph_id == graph_id)
+                    .where(Run.task_id == task['id'])
+                ).first()
+                if ret:
+                    print(f"Cache hit for graph_id={graph_id}, task_id={task['id']}")
+                    return ret
+                else:
+                    print(f"Cache miss for graph_id={graph_id}, task_id={task['id']} - creating new run")
 
         namespace = {
             '__name__': '__exec__',
@@ -162,11 +163,11 @@ class Graph(SQLModel, table=True):
             log=trace_log,
             score=score,
         )
-        with S(es) as session:
-            session.expire_on_commit = False
-            session.expire_on_commit = False
-            session.add(ret)
-            session.commit()
+        if self.id:
+            with S(es) as session:
+                session.expire_on_commit = False
+                session.add(ret)
+                session.commit()
 
         return ret
 

@@ -75,17 +75,31 @@ class LLM:
         return response.choices[0].message
 
 def lmm(*args, **kwargs):
-    good_arg = [x if isinstance(x, str) else x.copy().convert('RGB') for x in args]
-    for x in good_arg:
-        if isinstance(x, Image.Image):
-            x.thumbnail((1512, 1512))
-            assert min(x.width, x.height) > 11
-    assert any(isinstance(x, Image.Image) for x in good_arg), good_arg
-    for x in good_arg:
-        if isinstance(x, Image.Image):
-            assert x.width * x.height <= 1500 ** 2, x.size
-    ret = LLM(model=inference_model).aask(prompt=good_arg, **kwargs)
-    return ret
+    processed_args = [x if isinstance(x, str) else x.copy().convert('RGB') for x in args]
+    
+    for item in processed_args:
+        if isinstance(item, Image.Image):
+            item.thumbnail((1512, 1512))
+            assert min(item.width, item.height) > 11, "Image dimension too small"
+    
+    assert any(isinstance(item, Image.Image) for item in processed_args), "No images provided"
+    
+    for item in processed_args:
+        if isinstance(item, Image.Image):
+            assert item.width * item.height <= 1500 ** 2, f"Image size {item.size} exceeds 1500x1500 pixels"
+    
+    deduplicated_args = []
+    for item in processed_args:
+        if isinstance(item, str):
+            deduplicated_args.append(item)
+        else:
+            if item not in deduplicated_args:
+                deduplicated_args.append(item)
+            else:
+                deduplicated_args.append('<image>')
+    
+    response = LLM(model=inference_model).aask(prompt=deduplicated_args, **kwargs)
+    return response
 
 class ActionNode:
     def __init__(self, pydantic_model: Type[BaseModel]):

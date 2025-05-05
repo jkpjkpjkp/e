@@ -103,23 +103,28 @@ async def main(args):
         else:
             best_for += 1
 
-        graph = optimize(graph)
-        tasks = get_high_variance_task(args.experiment_strategy)
-        # Run final tasks for the new graph
-        await asyncio.gather(*[graph.run(task) for task in tasks])
+        old_graph = graph
+        graph = optimize(old_graph)
+
+        for _ in range(3):
+            try:
+                await graph.run(get_random_or_high_variance_task())
+                put(graph)
+                await graph.run(get_random_or_high_variance_task(5))
+                break
+            except Exception as e:
+                graph = debug(old_graph, graph, e)
 
 
 def test_run(args):
     graph = get_graph_from_a_file(args.seed_file)
     task = get_random_task()
-    print(task)
     print(asyncio.run(graph.run(task)))
 
 
 def test_optimize(args):
-    # Skip optimization test for now
-    print("Skipping optimization test")
-    pass
+    graph = get_graph_from_a_file(args.seed_file)
+    graph = asyncio.run(optimize(graph))
 
 def g_dino_detect(image, objects, box_threshold=0.3, text_threshold=0.25):
     from PIL import Image

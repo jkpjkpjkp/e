@@ -24,7 +24,6 @@ def get_task_by_id(id):
     row['id'] = id
     row['score'] = lambda x: loss(x, row['answer'], row['question'])
     row.pop('question_images_decoded')
-    assert 'image' in row
     return row
 
 def llm_as_judge(expected_output, prediction, question):
