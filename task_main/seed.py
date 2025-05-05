@@ -49,8 +49,7 @@ def run(image, question):
             },
         }
     }])
-        tool_call = parse(response)
-        if not tool_call:
-            return response
-        tool_response = tool_call()
+        if not response.tool_calls:
+            return response.content
+        tool_response = globals()[response.tool_calls[0].function.name](**response.tool_calls[0].function.arguments)
         info.append(tool_response)

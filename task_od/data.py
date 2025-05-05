@@ -4,7 +4,7 @@ import random
 import numpy as np
 
 # Use the dataset with bounding boxes grouped together
-df = pl.read_parquet('dataset_grouped.parquet')
+df = pl.read_parquet('/mnt/home/jkp/hack/e/dataset_grouped.parquet')
 
 def get_all_task_ids():
     return list(range(len(df)))
@@ -86,33 +86,29 @@ def get_task_by_id(id):
     height = ret['height']
     ret['image'] = Image.new('RGB', (width, height), (255, 255, 255))
 
-    # Get all labels for this image
-    labels = ret['labels']
+    labels = [ret['label']]
 
-    # Choose a random label to ask about
-    label_idx = random.randint(0, len(labels) - 1)
+    label_idx = 0
     ret['question'] = [labels[label_idx]]
 
-    all_annotations = ret['all_annotations']
+    all_annotations = ret['annotations']
 
     ret['answer'] = []
     for ann in all_annotations:
-        if int(ann[4]) == label_idx:
-            x, y, w, h = ann[:4]
-            ret['answer'].append([x, y, x + w, y + h])
+        # The annotation format is [x, y, w, h]
+        x, y, w, h = ann[:4]
+        ret['answer'].append([x, y, x + w, y + h])
 
     assert isinstance(ret['answer'], list)
-    if ret['answer']:  # Make sure there's at least one annotation for this label
-        assert len(ret['answer'][0]) == 4
+    assert len(ret['answer'][0]) == 4
 
     ret['id'] = id
 
-    # Create a scoring function that computes mAP for the specific label
     ret['score'] = lambda predictions: compute_coco_mAP(
         predictions,
-        all_annotations,  # Pass all annotations
-        label_idx,        # Pass the label index
-        labels            # Pass all labels
+        all_annotations,
+        label_idx,        
+        labels            
     )
 
     return ret

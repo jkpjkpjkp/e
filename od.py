@@ -3,7 +3,9 @@ from transformers import (
     AutoProcessor,
     AutoModelForZeroShotObjectDetection,
     AutoModelForCausalLM,
+    AutoTokenizer,
     Owlv2Processor,
+    Owlv2ImageProcessor,
     Owlv2ForObjectDetection
 )
 from typing import List, TypedDict, Tuple
@@ -143,7 +145,20 @@ def format_detections(detections: List[Bbox]) -> str:
 class Owl:
     def __init__(self, max_parallel=3):
         self.device = 'cuda'
-        self.processor = Owlv2Processor.from_pretrained("google/owlv2-large-patch14-ensemble")
+
+        # Manually initialize the processor components
+        image_processor = Owlv2ImageProcessor(
+            do_rescale=True,
+            rescale_factor=1.0 / 255,  # pixel value rescale
+            do_pad=True,
+            do_resize=True,
+            do_normalize=True
+        )
+
+        tokenizer = AutoTokenizer.from_pretrained("google/owlv2-large-patch14-ensemble")
+
+        self.processor = Owlv2Processor(image_processor=image_processor, tokenizer=tokenizer)
+
         self.model = Owlv2ForObjectDetection.from_pretrained("google/owlv2-large-patch14-ensemble").to(self.device).half()
         self.semaphore = threading.Semaphore(max_parallel)
 
@@ -295,8 +310,22 @@ def owl_v2(image: Image.Image, objects: List[str], threshold=0.1) -> Tuple[List[
 
 
 def _owl_demo():
+    # Manually initialize the processor components
+    image_processor = Owlv2ImageProcessor(
+        do_rescale=True,
+        rescale_factor=0.00392156862745098,  # 1/255
+        do_pad=True,
+        do_resize=True,
+        do_normalize=True
+    )
 
-    processor = Owlv2Processor.from_pretrained("google/owlv2-large-patch14-ensemble")
+    # Get the tokenizer directly
+    tokenizer = AutoTokenizer.from_pretrained("google/owlv2-large-patch14-ensemble")
+
+    # Create the processor manually
+    processor = Owlv2Processor(image_processor=image_processor, tokenizer=tokenizer)
+
+    # Load the model
     model = Owlv2ForObjectDetection.from_pretrained("google/owlv2-large-patch14-ensemble")
 
     url = "http://images.cocodataset.org/val2017/000000039769.jpg"
