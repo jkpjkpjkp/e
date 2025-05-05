@@ -192,8 +192,17 @@ if __name__ == '__main__':
     }
     if args.inference_model in model_map:
         args.inference_model = model_map[args.inference_model]
+    else:
+        # If the model name is not in the map, ensure it's a valid string
+        if not args.inference_model or not isinstance(args.inference_model, str):
+            args.inference_model = 'qwen-vl-plus-latest'  # Default to a safe value
+
     if args.optimization_model in model_map:
         args.optimization_model = model_map[args.optimization_model]
+    else:
+        # If the model name is not in the map, ensure it's a valid string
+        if not args.optimization_model or not isinstance(args.optimization_model, str):
+            args.optimization_model = 'qwen-vl-max-latest'  # Default to a safe value
 
     if not args.seed_file:
         args.seed_file = f"{args.folder}/seed.py"
@@ -215,6 +224,12 @@ if __name__ == '__main__':
     assert callable(new_get_all_task_ids) and callable(new_get_task_by_id)
     set_data(new_get_all_task_ids, new_get_task_by_id)
 
+    # First set the models to ensure they're available for any code that needs them
+    from anode import set_inference_model, set_optimization_model
+    set_inference_model(args.inference_model)
+    set_optimization_model(args.optimization_model)
+
+    # Then load the prompt module
     prompt_spec = importlib.util.spec_from_file_location("prmopt_module", args.prompt_file)
     prompt_module = importlib.util.module_from_spec(prompt_spec)
     prompt_spec.loader.exec_module(prompt_module)
@@ -225,11 +240,6 @@ if __name__ == '__main__':
 
     with open(args.prompt_file, "r") as f:
         exec(f.read())
-
-
-    from anode import set_inference_model, set_optimization_model
-    set_inference_model(args.inference_model)
-    set_optimization_model(args.optimization_model)
 
     es = create_engine(f"sqlite:///{args.db_name}")
     SQLModel.metadata.create_all(es)

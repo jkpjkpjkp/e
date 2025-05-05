@@ -1,5 +1,6 @@
 import re
 import json
+import inspect
 from typing import Any, Dict, Type, List, Optional, Callable
 from pydantic import BaseModel, Field
 from openai import OpenAI
@@ -32,6 +33,44 @@ def to_base64(image: Image.Image):
     buffered = BytesIO()
     image.save(buffered, format="PNG")
     return f'data:image/png;base64,{base64.b64encode(buffered.getvalue()).decode()}'
+
+def make_json_serializable(obj):
+    """
+    Recursively convert non-serializable objects to string representations.
+    """
+    if isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    elif isinstance(obj, dict):
+        if 'function' in obj and isinstance(obj['function'], dict) and 'callable' in obj['function']:
+            result = {}
+            for k, v in obj.items():
+                if k == 'function':
+                    function_dict = {}
+                    for fn_k, fn_v in obj['function'].items():
+                        if fn_k == 'callable' and callable(fn_v):
+                            logger.warning(f"Callable function {fn_v} is not serializable. dropped.")
+                            continue
+                        else:
+                            function_dict[fn_k] = make_json_serializable(fn_v)
+                    result[k] = function_dict
+                else:
+                    result[k] = make_json_serializable(v)
+            return result
+        else:
+            return {k: make_json_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_serializable(item) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(make_json_serializable(item) for item in obj)
+    elif callable(obj):
+        return f"<function {obj.__name__}>"
+    elif hasattr(obj, "__dict__"):
+        try:
+            return make_json_serializable(obj.__dict__)
+        except:
+            return str(obj)
+    else:
+        return str(obj)
 
 class LLM:
     def __init__(self, model) -> None:
@@ -69,7 +108,9 @@ class LLM:
         }
 
         if tools:
-            kwargs["tools"] = tools
+            kwargs["tools"] = make_json_serializable(tools)
+
+        kwargs = make_json_serializable(kwargs)
 
         response = self.client.chat.completions.create(**kwargs)
         return response.choices[0].message
@@ -127,13 +168,45 @@ def lmm(*args, **kwargs):
     messages.append({"role": "user", "content": content})
 
     api_kwargs = {
-        "model": inference_model,
+        "model": inference_model or 'claude-3-7-sonnet-20250219',
         "messages": messages,
         "temperature": 0,
     }
 
     if 'tools' in kwargs:
-        api_kwargs["tools"] = kwargs['tools']
+        print("Original tools:", kwargs['tools'])
+        api_kwargs["tools"] = make_json_serializable(kwargs['tools'])
+        print("Serializable tools:", api_kwargs["tools"])
+
+    print("Before serialization:", api_kwargs)
+    api_kwargs = make_json_serializable(api_kwargs)
+    print("After serialization:", api_kwargs)
+
+    try:
+        import json
+        json_str = json.dumps(api_kwargs)
+        print("Successfully serialized to JSON")
+    except Exception as e:
+        print(f"Error serializing to JSON: {e}")
+        # Try to identify the problematic part
+        for key, value in api_kwargs.items():
+            try:
+                json.dumps({key: value})
+            except Exception as e:
+                print(f"Problem with key {key}: {e}")
+                if isinstance(value, list):
+                    for i, item in enumerate(value):
+                        try:
+                            json.dumps(item)
+                        except Exception as e:
+                            print(f"Problem with item {i} in {key}: {e}")
+                elif isinstance(value, dict):
+                    for k, v in value.items():
+                        try:
+                            json.dumps({k: v})
+                        except Exception as e:
+                            print(f"Problem with key {k} in {key}: {e}")
+        raise
 
     response = client.chat.completions.create(**api_kwargs)
 
