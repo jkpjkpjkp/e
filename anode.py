@@ -75,6 +75,11 @@ class LLM:
         return response.choices[0].message
 
 def lmm(*args, **kwargs):
+    global inference_model
+
+    if inference_model is None:
+        raise ValueError("inference_model is not set. Please call set_inference_model() before using lmm().")
+
     processed_args = [x if isinstance(x, str) else x.copy().convert('RGB') for x in args]
 
     for item in processed_args:
@@ -122,7 +127,7 @@ def lmm(*args, **kwargs):
     messages.append({"role": "user", "content": content})
 
     api_kwargs = {
-        "model": inference_model,
+        "model": inference_model or 'claude-3-7-sonnet-20250219',
         "messages": messages,
         "temperature": 0,
     }
@@ -238,6 +243,10 @@ class GenerateOp(BaseModel):
 
 def custom(*args, dna=GenerateOp):
     global optimization_model
+
+    if optimization_model is None:
+        raise ValueError("optimization_model is not set. Please call set_optimization_model() before using custom().")
+
     for x in args:
         assert x
     if len(args) == 1 and isinstance(args[0], (tuple, list)):
