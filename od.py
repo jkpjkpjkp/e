@@ -31,7 +31,7 @@ class Dino:
         with self.semaphore:
             image = image.convert('RGB')
             text = '. '.join(text.strip().lower() for text in texts) + '.'
-            print("GD: ", text, image)
+            print(f"GD: {text} (image size: {image.size})")
             inputs = self.gd_processor(images=image, text=text, return_tensors='pt').to(self.device)
             self.gd_model.to(self.device)
 

@@ -132,7 +132,7 @@ def lmm(*args, **kwargs):
 
     for item in processed_args:
         if isinstance(item, Image.Image):
-            assert item.width * item.height <= 1500 ** 2, f"Image size {item.size} exceeds 1500x1500 pixels"
+            assert item.width * item.height <= 1512 ** 2, f"Image size {item.size} exceeds 1500x1500 pixels"
 
     deduplicated_args = []
     for item in processed_args:
@@ -174,21 +174,22 @@ def lmm(*args, **kwargs):
     }
 
     if 'tools' in kwargs:
-        print("Original tools:", kwargs['tools'])
+        print(f"Tools provided: {len(kwargs['tools'])} tool(s)")
         api_kwargs["tools"] = make_json_serializable(kwargs['tools'])
-        print("Serializable tools:", api_kwargs["tools"])
+        print(f"Tools serialized: {len(api_kwargs['tools'])} tool(s)")
 
-    print("Before serialization:", api_kwargs)
+    # Avoid printing the entire API request which may contain base64 image data
+    print(f"API request prepared with model: {api_kwargs['model']}")
     api_kwargs = make_json_serializable(api_kwargs)
-    print("After serialization:", api_kwargs)
+    print("API request serialized successfully")
 
     try:
         import json
-        json_str = json.dumps(api_kwargs)
+        json.dumps(api_kwargs)  # Just check if it can be serialized, don't store the result
         print("Successfully serialized to JSON")
     except Exception as e:
         print(f"Error serializing to JSON: {e}")
-        # Try to identify the problematic part
+        # Try to identify the problematic part without printing the values
         for key, value in api_kwargs.items():
             try:
                 json.dumps({key: value})

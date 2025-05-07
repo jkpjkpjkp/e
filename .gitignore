@@ -9,6 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
+# UV package manager
+uv.lock
+
 one.sqlite
 wandb/
 *.parquet
