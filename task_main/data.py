@@ -28,7 +28,7 @@ def get_task_by_id(id):
 
 def llm_as_judge(expected_output, prediction, question):
     llm = LLM('deepseek-chat')
-    
+
     prompt = f"""You are a judge evaluating the correctness of a prediction. Compare the prediction with the expected output.
 
 question: {question}
@@ -39,8 +39,21 @@ Please return 1 if the prediction is correct; that is, it leads to the correct a
 
 Respond with only the numerical score (0 or 1)."""
     try:
-        score = llm.aask(prompt)
-        return float(score.strip())
+        response = llm.aask(prompt)
+        # Handle different response types
+        if hasattr(response, 'content'):
+            score_text = response.content
+        else:
+            score_text = str(response)
+
+        # Extract just the digit
+        import re
+        score_match = re.search(r'[01]', score_text)
+        if score_match:
+            return float(score_match.group(0))
+        else:
+            print(f"Could not extract score from: {score_text}")
+            return 0.0
     except Exception as e:
         print(f"Error calculating score: {e}")
         return 0.0

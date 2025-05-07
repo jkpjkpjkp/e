@@ -8,8 +8,15 @@ def run(image, question):
     image_map = {"image1": image}
 
     # Create a system prompt to inform the LLM about the image identifiers
-    system_prompt = """You are analyzing images. You can refer to images by their identifiers:
+    system_prompt = """You are analyzing images to answer questions accurately. You can refer to images by their identifiers:
 - image1: The 1st input image
+
+IMPORTANT INSTRUCTIONS:
+1. For counting questions, use the grounding_dino tool to detect and count objects.
+2. Always provide a clear, concise numerical answer.
+3. For questions asking "how many", make sure to use object detection to count accurately.
+4. Your final answer should be a single number or a very short phrase.
+5. Always end your response with "The answer is: X" where X is your final answer.
 
 When using the grounding_dino tool, specify the image using its identifier (e.g., "image1").
 """
@@ -65,7 +72,14 @@ When using the grounding_dino tool, specify the image using its identifier (e.g.
 
         response = lmm(image, question, system_msgs=system_prompt, tools=[tool_definition])
         if not response.tool_calls:
-            return response.content
+            # Extract the final answer if it follows our format
+            import re
+            answer_match = re.search(r"The answer is:\s*(\d+|[\w\s\-\.]+)(?:\.|$)", response.content)
+            if answer_match:
+                return answer_match.group(1).strip()
+            else:
+                # If no formatted answer found, return the full content
+                return response.content
 
         tool_call = response.tool_calls[0]
         tool_name = tool_call.function.name
