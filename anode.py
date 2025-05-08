@@ -112,8 +112,29 @@ class LLM:
 
         kwargs = make_json_serializable(kwargs)
 
-        response = self.client.chat.completions.create(**kwargs)
-        return response.choices[0].message
+        try:
+            response = self.client.chat.completions.create(**kwargs)
+            if response and hasattr(response, 'choices') and response.choices:
+                return response.choices[0].message
+            else:
+                # Check if there's an error field in the response
+                error_msg = ""
+                if hasattr(response, 'error') and response.error:
+                    error_msg = f"API error: {response.error.get('message', 'Unknown error')}"
+                    logger.error(error_msg)
+                else:
+                    error_msg = f"API returned an invalid response without choices"
+                    logger.error("%s: %s", error_msg, response)
+
+                # Return a simple message object with the error message as content
+                from types import SimpleNamespace
+                return SimpleNamespace(content=f"Error: {error_msg}", tool_calls=None)
+        except Exception as e:
+            error_msg = f"Error calling API: {e}"
+            logger.error(error_msg)
+            # Return a simple message object with the error message as content
+            from types import SimpleNamespace
+            return SimpleNamespace(content=f"Error: {error_msg}", tool_calls=None)
 
 def lmm(*args, **kwargs):
     global inference_model
@@ -209,9 +230,20 @@ def lmm(*args, **kwargs):
                             print(f"Problem with key {k} in {key}: {e}")
         raise
 
-    response = client.chat.completions.create(**api_kwargs)
-
-    return response.choices[0].message
+    try:
+        response = client.chat.completions.create(**api_kwargs)
+        if response and hasattr(response, 'choices') and response.choices:
+            return response.choices[0].message
+        else:
+            logger.error("API returned an invalid response: %s", response)
+            # Return a simple message object with empty content
+            from types import SimpleNamespace
+            return SimpleNamespace(content="", tool_calls=None)
+    except Exception as e:
+        logger.error("Error calling API: %s", e)
+        # Return a simple message object with empty content
+        from types import SimpleNamespace
+        return SimpleNamespace(content="", tool_calls=None)
 
 class ActionNode:
     def __init__(self, pydantic_model: Type[BaseModel]):
@@ -241,7 +273,9 @@ class ActionNode:
 
     def xml_fill(self, context: str | tuple) -> Dict[str, Any]:
         extracted_data: Dict[str, Any] = {}
-        content = self.llm.aask(context)
+        message = self.llm.aask(context)
+        # Extract content from ChatCompletionMessage object
+        content = message.content if hasattr(message, 'content') else str(message)
         for field_name, field_info in self.pydantic_model.model_fields.items():
             pattern = rf"<{field_name}>((?:(?!<{field_name}>).)*?)</{field_name}>"
             match = re.search(pattern, content, re.DOTALL)
