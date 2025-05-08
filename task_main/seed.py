@@ -113,3 +113,5 @@ When using the grounding_dino tool, specify the image using its identifier (e.g.
         else:
             tool_response = globals()[tool_name](**tool_args)
         info.append(tool_response)
+    
+    return info[-1]
